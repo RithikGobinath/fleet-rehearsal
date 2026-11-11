@@ -1,0 +1,21 @@
+{
+  "at": "2026-11-10T19:00:00Z",
+  "snapshot": {
+    "site_id": "harbor",
+    "revision": 1,
+    "max_age_seconds": 300,
+    "devices": {
+      "harbor-01": {"healthy": true, "observed_at": "2026-11-10T18:59:00Z", "redundancy_group": "harbor-uplink"},
+      "harbor-02": {"healthy": true, "observed_at": "2026-11-10T18:59:00Z", "redundancy_group": "harbor-uplink"},
+      "service-edge": {"healthy": true, "observed_at": "2026-11-10T18:59:00Z"}
+    },
+    "links": [["service-edge", "harbor-01"], ["service-edge", "harbor-02"]],
+    "uplinks": ["harbor-01", "harbor-02"],
+    "services": {"dispatch": "service-edge"}
+  },
+  "wave": {"device_ids": ["harbor-01"], "starts_at": "2026-11-10T19:00:00Z", "ends_at": "2026-11-10T19:05:00Z"},
+  "after_approval": {"revision": 2, "device_id": "harbor-02", "healthy": false, "observed_at": "2026-11-10T19:00:30Z"},
+  "revalidate_at": "2026-11-10T19:01:00Z",
+  "expected_before": {"allowed": true, "reason": null},
+  "expected_after": {"allowed": false, "reason": "alternate_path_unavailable"}
+}
