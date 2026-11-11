@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: fleet
       POSTGRES_HOST_AUTH_METHOD: trust
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "fleet", "-d", "fleet"]
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "fleet", "-d", "fleet"]
       interval: 2s
       timeout: 2s
       retries: 20
