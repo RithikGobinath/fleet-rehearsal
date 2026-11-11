@@ -130,7 +130,7 @@ paths:
       security: [{HTTPBearer: []}]
       summary: Revalidate and reserve one simulated wave
       x-implementation-status: planned
-      description: Requires a site operator, the exact approval, and fresh applied evidence. A blocked decision commits audit evidence without creating a run or starting the simulator.
+      description: Requires a site operator, the exact approval, and fresh applied evidence. A block before reservation commits audit evidence without creating a run. A later block is visible on the queued run.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody: {$ref: '#/components/requestBodies/ExpectedFingerprint'}
@@ -189,6 +189,16 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Run'}
+              example:
+                run_id: run-001
+                plan_id: dispatch
+                revision: 1
+                wave_number: 1
+                snapshot_revision: 2
+                state: blocked
+                reason: alternate_path_unavailable
+                audit_id: audit-002
+                devices: []
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
@@ -324,6 +334,8 @@ components:
         - pending_evidence
         - site_busy
         - policy_changed
+        - stale_revision
+        - authorization_revoked
         - outside_window
         - prerequisite_incomplete
         - already_rehearsed
@@ -336,7 +348,7 @@ components:
         code:
           anyOf:
             - $ref: '#/components/schemas/Reason'
-            - enum: [unauthenticated, forbidden, not_found, invalid_request, stale_revision, invalid_plan_state, idempotency_conflict]
+            - enum: [unauthenticated, forbidden, not_found, invalid_request, invalid_plan_state, idempotency_conflict]
         detail: {type: string}
         current_revision: {type: integer, minimum: 1}
         snapshot_revision: {type: integer, minimum: 1}
@@ -382,15 +394,20 @@ components:
         audit_id: {$ref: '#/components/schemas/Id'}
     Run:
       type: object
+      description: A blocked run includes reason and audit_id and has no device outcomes.
       required: [run_id, plan_id, revision, wave_number, snapshot_revision, state, devices]
       properties:
         run_id: {$ref: '#/components/schemas/Id'}
         plan_id: {$ref: '#/components/schemas/Id'}
         revision: {type: integer, minimum: 1}
         wave_number: {type: integer, minimum: 1}
-        snapshot_revision: {type: integer, minimum: 1}
-        state: {enum: [queued, running, succeeded, paused, partial_failure, rolled_back, failed]}
+        snapshot_revision:
+          type: integer
+          minimum: 1
+          description: Applied snapshot checked at reservation or by the worker's later start decision.
+        state: {enum: [queued, blocked, running, succeeded, paused, partial_failure, rolled_back, failed]}
         reason: {$ref: '#/components/schemas/Reason'}
+        audit_id: {$ref: '#/components/schemas/Id'}
         devices:
           type: array
           items:
