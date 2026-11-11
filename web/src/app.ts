@@ -11,6 +11,7 @@ import { CommonModule } from '@angular/common';
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Subscription } from 'rxjs';
 import type { components } from './api.generated';
+import { inventoryFixtureMode } from './inventory-http';
 
 type Schemas = components['schemas'];
 type PrincipalTenant = Schemas['Tenant'];
@@ -38,6 +39,9 @@ type AssetsResponse = Schemas['InventoryPage'];
         <div class="brand-section">
           <h1 class="brand-title">Fleet Rehearsal</h1>
           <span class="brand-badge">Inventory Console</span>
+          @if (fixtureMode) {
+            <span class="brand-badge">Local fixtures</span>
+          }
         </div>
 
         <div class="header-controls">
@@ -443,6 +447,7 @@ type AssetsResponse = Schemas['InventoryPage'];
 })
 export class App implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient);
+  protected readonly fixtureMode = inventoryFixtureMode;
 
   // Sequence guards to prevent late responses from race conditions
   private identitySequence = 0;
