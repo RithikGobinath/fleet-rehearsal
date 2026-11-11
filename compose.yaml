@@ -43,6 +43,19 @@ services:
       timeout: 3s
       retries: 20
     networks: [app]
+  worker:
+    profiles: [rehearsal]
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    command: ["python", "-m", "fleet.worker"]
+    environment:
+      DATABASE_URL: postgresql://fleet@db:5432/fleet
+      FLEET_DEMO_MODE: local
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [data]
 volumes:
   fleet-db:
 networks:

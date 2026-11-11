@@ -1,0 +1,83 @@
+<section class="panel-card" aria-labelledby="rehearsal-heading">
+  <h2 id="rehearsal-heading">Synthetic rehearsal</h2>
+  <p>Tenant: {{ tenant }} · Simulation only</p>
+  <div class="actions">
+    <label>Site <input #s [value]="site()" [disabled]="busy()" (change)="chooseSite(s.value)"></label>
+    <button class="btn btn-secondary" type="button" [disabled]="busy() || !token" (click)="refreshContext()">Refresh evidence</button>
+  </div>
+  @if (context(); as current) {
+    <p>Role: {{ current.role.replaceAll('_', ' ') }} · Simulation time {{ current.clock_at }}</p>
+    <p role="status">
+      @if (current.pending) { Evidence is pending. Wait for projection and refresh. }
+      @else if (current.stale) { Evidence is stale. Refresh before starting. }
+      @else { Last observation: {{ current.last_observed_at ?? 'Unavailable' }} }
+    </p>
+  }
+  @if (error(); as failure) {
+    <div role="alert">
+      <strong>{{ failure.code }}</strong>: {{ failure.detail }}
+      @if (failure.audit_id) { <span> Audit {{ failure.audit_id }}.</span> }
+      @if (failure.current_revision) {
+        <button class="btn btn-secondary" type="button" (click)="chooseRevision(failure.current_revision.toString()); loadPlan()">Reload current revision</button>
+      }
+      @if (canRetry()) {
+        <button class="btn btn-secondary" type="button" [disabled]="busy()" (click)="retryWrite()">Retry same request</button>
+      }
+    </div>
+  }
+  <div class="actions">
+    <label>Plan ID <input #p [value]="planId()" [disabled]="busy()" (input)="choosePlan(p.value)"></label>
+    <label>Revision <input #r type="number" min="0" [value]="revision()" [disabled]="busy()" (input)="chooseRevision(r.value)"></label>
+    <button class="btn btn-secondary" type="button" [disabled]="busy() || !context() || revision() < 1" (click)="loadPlan()">Load revision</button>
+    <button class="btn btn-secondary" type="button" [disabled]="busy() || context()?.role !== 'partner_proposer'" (click)="preview()">Create preview</button>
+    <button class="btn btn-secondary" type="button" [disabled]="busy() || !context()" (click)="loadAudit()">Load audit</button>
+  </div>
+  @if (plan(); as currentPlan) {
+    <h3>Plan {{ currentPlan.plan_id }} · revision {{ currentPlan.revision }}</h3>
+    <p>Snapshot {{ currentPlan.snapshot_revision }} · policy {{ currentPlan.policy_revision }}</p>
+    <p>Protected services: {{ currentPlan.protected_services?.join(', ') || 'Unavailable' }}</p>
+    @if (currentPlan.approval; as approval) {
+      <p>Approved by {{ approval.approved_by }} · {{ approval.audit_id }}</p>
+    } @else {
+      <button class="btn btn-secondary" type="button"
+        [disabled]="busy() || context()?.role !== 'customer_approver' || !currentPlan.waves.length" (click)="approve()">Approve revision</button>
+    }
+    @for (wave of currentPlan.waves; track wave.wave_number) {
+      <article>
+        <h4>Wave {{ wave.wave_number }} @if (wave.canary) { · Canary }</h4>
+        <p>{{ wave.starts_at }} to {{ wave.ends_at }} · {{ wave.device_ids.join(', ') }}</p>
+        <button class="btn btn-secondary" type="button"
+          [disabled]="busy() || context()?.role !== 'operator' || !currentPlan.approval"
+          (click)="start(wave.wave_number)">Start wave {{ wave.wave_number }}</button>
+      </article>
+    } @empty { <p>No eligible waves.</p> }
+    @if (currentPlan.deferred.length) {
+      <h4>Deferred devices</h4>
+      <ul>@for (device of currentPlan.deferred; track device.asset_id) {
+        <li>{{ device.asset_id }} · {{ device.reason }}</li>
+      }</ul>
+    }
+  }
+  @if (run(); as currentRun) {
+    <article aria-live="polite">
+      <h3>Run {{ currentRun.run_id }}</h3>
+      <p>State: {{ currentRun.state }}
+        @if (currentRun.state === 'blocked') { · Blocked before simulation started }
+      </p>
+      @if (currentRun.reason) { <p>{{ currentRun.reason }} · {{ currentRun.audit_id }}</p> }
+      <ul>@for (device of currentRun.devices; track device.asset_id) {
+        <li>{{ device.asset_id }} · {{ device.outcome }}</li>
+      }</ul>
+      <button class="btn btn-secondary" type="button" [disabled]="busy()" (click)="refreshRun()">Refresh run</button>
+    </article>
+  }
+  @if (audit(); as page) {
+    <h3>Audit timeline</h3>
+    <ol>@for (event of page.items; track event.audit_id) {
+      <li>{{ event.audit_id }} · {{ event.kind }} · {{ event.reason ?? event.actor_id }}</li>
+    }</ol>
+    @if (page.next_cursor) {
+      <button class="btn btn-secondary" type="button" [disabled]="busy()" (click)="loadAudit(page.next_cursor)">Next audit page</button>
+    }
+  }
+</section>

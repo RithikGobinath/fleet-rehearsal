@@ -106,6 +106,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/tenants/{tenant_id}/sites/{site_id}/rehearsal/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Rehearsal Context */
+        get: operations["rehearsalContext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/tenants/{tenant_id}/sites/{site_id}/plans/{plan_id}/revisions": {
         parameters: {
             query?: never;
@@ -277,6 +294,7 @@ export interface components {
             snapshot_revision: number;
             policy_revision: number;
             fingerprint: components["schemas"]["Fingerprint"];
+            protected_services?: components["schemas"]["Id"][];
             waves: components["schemas"]["Wave"][];
             deferred: {
                 asset_id: components["schemas"]["Id"];
@@ -436,6 +454,22 @@ export interface components {
             next_cursor: string | null;
             /** Total */
             total: number;
+        };
+        /** RehearsalContext */
+        RehearsalContext: {
+            /** Clock At */
+            clock_at: string;
+            /** Last Observed At */
+            last_observed_at: string | null;
+            /** Pending */
+            pending: boolean;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "viewer" | "partner_proposer" | "customer_approver" | "operator";
+            /** Stale */
+            stale: boolean;
         };
     };
     responses: {
@@ -818,6 +852,38 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rehearsalContext: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RehearsalContext"];
+                };
             };
             /** @description Validation Error */
             422: {

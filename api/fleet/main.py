@@ -3,16 +3,20 @@ import json
 import os
 import secrets
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated, Literal
 
 import psycopg
-from fastapi import Depends, FastAPI, HTTPException, Path as PathParam, Query, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Path as PathParam, Query, Request
+from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 
 from fleet.inventory_import import IMPORT_SCHEMA, InventoryBatch, read_inventory_import, store_inventory_import
+from fleet import rehearsal
 from fleet.settings import LocalSettings
 from fleet.storage import INVENTORY_PAGE_SQL, initialize_inventory
 
@@ -88,6 +92,7 @@ async def lifespan(app: FastAPI):
     seed = json.loads(settings.fixture_path.read_text(encoding="utf-8"))
     with psycopg.connect(settings.database_url) as conn:
         initialize_inventory(conn, seed)
+        rehearsal.seed_rehearsal(conn)
     app.state.settings = settings
     yield
 
@@ -122,16 +127,22 @@ def require_tenant(db: psycopg.Connection, caller: str, tenant: str) -> None:
         raise HTTPException(403, "This identity does not have access to that customer.")
 
 
-def require_site_role(db: psycopg.Connection, caller: str, tenant: str, site: str, role: SiteRole) -> None:
+def require_site(db: psycopg.Connection, caller: str, tenant: str, site: str, allowed: tuple[SiteRole, ...], lock=False):
     require_tenant(db, caller, tenant)
     grant = db.execute(
-        "SELECT role FROM grants WHERE principal_id = %s AND tenant_id = %s AND site_id = %s",
+        "SELECT role FROM grants WHERE principal_id = %s AND tenant_id = %s AND site_id = %s"
+        + (" FOR SHARE" if lock else ""),
         (caller, tenant, site),
     ).fetchone()
     if grant is None:
         raise HTTPException(404, "Site not found in granted scope.")
-    if grant["role"] != role:
+    if grant["role"] not in allowed:
         raise HTTPException(403, "This identity cannot perform that action.")
+    return grant["role"]
+
+
+def require_site_role(db: psycopg.Connection, caller: str, tenant: str, site: str, role: SiteRole) -> None:
+    require_site(db, caller, tenant, site, (role,))
 
 
 @app.post(
@@ -152,6 +163,122 @@ def import_inventory(
 ) -> dict[str, int]:
     require_site_role(db, caller, tenant_id, site_id, "operator")
     return {"accepted": store_inventory_import(db, tenant_id, site_id, batch)}
+
+
+SCOPE_PATH = "/v1/tenants/{tenant_id}/sites/{site_id}"
+PLAN_PATH = SCOPE_PATH + "/plans/{plan_id}/revisions"
+REVISION_PATH = PLAN_PATH + "/{revision}"
+READ_ROLES = ("partner_proposer", "customer_approver", "operator")
+Revision = Annotated[int, PathParam(ge=1, le=9007199254740991)]
+IdempotencyKey = Annotated[str, Header(alias="Idempotency-Key", pattern=r"^[A-Za-z0-9_-]{16,128}$")]
+
+
+class PreviewRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    base_revision: Annotated[int, Field(strict=True, ge=0, le=9007199254740991)]
+
+
+class FingerprintRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    expected_fingerprint: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
+
+
+class RehearsalContext(BaseModel):
+    role: SiteRole
+    clock_at: str
+    last_observed_at: str | None
+    stale: bool
+    pending: bool
+
+
+@app.get(SCOPE_PATH + "/rehearsal/context", operation_id="rehearsalContext")
+def rehearsal_context(tenant_id: AssetId, site_id: AssetId, db: Database, caller: Caller) -> RehearsalContext:
+    role = require_site(db, caller, tenant_id, site_id, READ_ROLES)
+    state = rehearsal.site_state(db, (tenant_id, site_id))
+    clock = state["clock_at"]
+    observed = [datetime.fromisoformat(device["observed_at"]) for device in state["graph"]["devices"].values()
+                if device.get("observed_at")]
+    oldest = clock - timedelta(seconds=state["graph"]["max_age_seconds"])
+    return RehearsalContext(role=role, clock_at=rehearsal.stamp(clock),
+                            last_observed_at=rehearsal.stamp(max(observed)) if observed else None,
+                            stale=any(value < oldest or value > clock for value in observed), pending=False)
+
+
+def rehearsal_write(db, scope, caller, role, operation, key, payload, action):
+    with db.transaction():
+        require_site_role(db, caller, *scope, role)
+        db.execute("SELECT 1 FROM sites WHERE (tenant_id,id)=(%s,%s) FOR UPDATE", scope)
+        require_site(db, caller, *scope, (role,), lock=True)
+        status, body, location = rehearsal.write_once(db, scope, caller, operation, key, payload, action)
+    return JSONResponse(body, status, headers={"Location": location} if location else None)
+
+
+def scoped_errors(request):
+    return request.url.path.startswith("/v1/tenants/") and not request.url.path.endswith("/inventory/import")
+
+
+@app.exception_handler(HTTPException)
+async def scoped_http_error(request: Request, error: HTTPException):
+    if not scoped_errors(request):
+        return await http_exception_handler(request, error)
+    if isinstance(error.detail, dict):
+        body = error.detail
+    else:
+        code = {401: "unauthenticated", 403: "forbidden", 404: "not_found"}.get(error.status_code, "invalid_request")
+        body = {"code": code, "detail": error.detail}
+    return JSONResponse(body, error.status_code, headers=error.headers)
+
+
+@app.exception_handler(RequestValidationError)
+async def scoped_validation_error(request: Request, error: RequestValidationError):
+    if scoped_errors(request):
+        return JSONResponse({"code": "invalid_request", "detail": "Check the submitted fields and headers."}, 422)
+    return await request_validation_exception_handler(request, error)
+
+
+@app.post(PLAN_PATH, status_code=201, operation_id="previewPlan")
+def preview_plan(tenant_id: AssetId, site_id: AssetId, plan_id: AssetId,
+                 body: PreviewRequest, key: IdempotencyKey, db: Database, caller: Caller):
+    scope = (tenant_id, site_id)
+    return rehearsal_write(db, scope, caller, "partner_proposer", "preview", key, [plan_id, body.base_revision],
+                           lambda correlation: rehearsal.preview_plan(db, scope, caller, plan_id, body.base_revision, correlation))
+
+
+@app.get(REVISION_PATH, operation_id="readPlanRevision")
+def read_plan(tenant_id: AssetId, site_id: AssetId, plan_id: AssetId, revision: Revision, db: Database, caller: Caller):
+    require_site(db, caller, tenant_id, site_id, READ_ROLES)
+    return rehearsal.read_plan(db, (tenant_id, site_id), plan_id, revision)[0]
+
+
+@app.post(REVISION_PATH + "/approval", status_code=201, operation_id="approvePlanRevision")
+def approve_plan(tenant_id: AssetId, site_id: AssetId, plan_id: AssetId, revision: Revision,
+                 body: FingerprintRequest, key: IdempotencyKey, db: Database, caller: Caller):
+    scope, expected = (tenant_id, site_id), body.expected_fingerprint
+    return rehearsal_write(db, scope, caller, "customer_approver", "approve", key, [plan_id, revision, expected],
+                           lambda correlation: rehearsal.approve_plan(db, scope, caller, plan_id, revision, expected, correlation))
+
+
+@app.post(REVISION_PATH + "/waves/{wave_number}/runs", status_code=202, operation_id="startRehearsal")
+def start_rehearsal(tenant_id: AssetId, site_id: AssetId, plan_id: AssetId, revision: Revision, wave_number: Revision,
+                    body: FingerprintRequest, key: IdempotencyKey, db: Database, caller: Caller):
+    scope, expected = (tenant_id, site_id), body.expected_fingerprint
+    return rehearsal_write(db, scope, caller, "operator", "start", key, [plan_id, revision, wave_number, expected],
+                           lambda correlation: rehearsal.reserve_wave(db, scope, caller, plan_id, revision,
+                                                                      wave_number, expected, correlation))
+
+
+@app.get(SCOPE_PATH + "/runs/{run_id}", operation_id="readRehearsal")
+def read_run(tenant_id: AssetId, site_id: AssetId, run_id: AssetId, db: Database, caller: Caller):
+    require_site(db, caller, tenant_id, site_id, READ_ROLES)
+    return rehearsal.read_run(db, (tenant_id, site_id), run_id)
+
+
+@app.get(SCOPE_PATH + "/audit", operation_id="listSiteAudit")
+def audit_page(tenant_id: AssetId, site_id: AssetId, db: Database, caller: Caller,
+               after: Annotated[str | None, Query(max_length=512)] = None,
+               limit: Annotated[int, Query(ge=1, le=100)] = 25):
+    require_site(db, caller, tenant_id, site_id, READ_ROLES)
+    return rehearsal.audit_page(db, (tenant_id, site_id), after, limit)
 
 
 @app.get("/healthz")
