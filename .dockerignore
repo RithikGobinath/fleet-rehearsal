@@ -1,0 +1,13 @@
+.git
+.venv
+**/__pycache__
+**/node_modules
+**/.angular
+**/dist
+**/test-results
+**/playwright-report
+**/.env
+**/.env.*
+**/*.dump
+**/*.sql.gz
+backups

@@ -1,0 +1,38 @@
+name: Inventory checks
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build and start the synthetic demo
+        run: docker compose up --build --wait
+      - name: Check the inventory API against PostgreSQL
+        run: docker compose exec -T api python -m unittest discover -s tests -v
+      - name: Check the inventory journey in Chromium
+        working-directory: web
+        run: |
+          npm ci
+          npm run types:api -- --check
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+      - name: Print service logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Stop the demo
+        if: always()
+        run: docker compose down -v

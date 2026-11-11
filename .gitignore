@@ -6,3 +6,13 @@ node_modules/
 .terraform/
 *.tfstate
 *.tfstate.*
+__pycache__/
+.angular/
+dist/
+playwright-report/
+test-results/
+.coverage
+.pytest_cache/
+*.dump
+*.sql.gz
+/backups/
