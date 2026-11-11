@@ -24,6 +24,8 @@ NOT_ELIGIBLE = "not_eligible"
 DEADLINE_MISSED = "deadline_missed"
 NO_WINDOW_BEFORE_DEADLINE = "no_window_before_deadline"
 CANARY_NOT_SCHEDULED = "canary_not_scheduled"
+OUTSIDE_WINDOW = "outside_window"
+PREREQUISITE_INCOMPLETE = "prerequisite_incomplete"
 
 
 class _Invalid(ValueError):
@@ -110,16 +112,44 @@ def plan_waves(snapshot, policy, at):
     return _plan(snapshot["site_id"], snapshot["revision"], waves, deferred)
 
 
+def validate_wave_policy(policy, wave, succeeded):
+    """Check policy independently of reachability and scheduling."""
+    try:
+        candidates, windows, blackouts, duration, canary = _read_policy(policy)
+    except _Invalid:
+        return INVALID_CONFIGURATION
+    if not isinstance(wave, dict):
+        return INVALID_WAVE
+    ids = wave.get("device_ids")
+    start, end = _parse_utc(wave.get("starts_at")), _parse_utc(wave.get("ends_at"))
+    if (not isinstance(ids, list) or not ids or not all(_is_id(asset) for asset in ids)
+            or len(ids) != len(set(ids)) or len(ids) > policy.get("max_parallel", 1)
+            or start is None or end is None or end - start != duration
+            or (canary in ids and len(ids) > 1)):
+        return INVALID_WAVE
+    if (not any(left <= start < end <= right for left, right in windows)
+            or any(left < end and start < right for left, right in blackouts)):
+        return OUTSIDE_WINDOW
+    by_id = {candidate["id"]: candidate for candidate in candidates}
+    if any(asset not in by_id or not by_id[asset]["eligible"] for asset in ids):
+        return NOT_ELIGIBLE
+    if any(by_id[asset]["deadline"] < end for asset in ids):
+        return DEADLINE_MISSED
+    if canary is not None and canary not in ids and canary not in succeeded:
+        return PREREQUISITE_INCOMPLETE
+    return None
+
+
 def _fit(candidate, now, cursor, duration, windows, blackouts):
     """Return (None, (start, end)) for the earliest allowed slot, or (reason, None)."""
     if not candidate["eligible"]:
         return NOT_ELIGIBLE, None
     deadline = candidate["deadline"]
-    if now + duration > deadline:
+    if deadline - now < duration:
         return DEADLINE_MISSED, None
     for window_start, window_end in windows:
         start = max(window_start, cursor)
-        while start + duration <= min(window_end, deadline):
+        while min(window_end, deadline) - start >= duration:
             end = start + duration
             clashes = [b_end for b_start, b_end in blackouts if b_start < end and start < b_end]
             if not clashes:
@@ -228,18 +258,22 @@ def _read_policy(policy):
     for raw in policy["candidates"]:
         _require(isinstance(raw, dict) and _is_id(raw.get("id")))
         _require(_is_int(raw.get("criticality")) and isinstance(raw.get("eligible"), bool))
+        manual_review = raw.get("manual_review", False)
+        _require(isinstance(manual_review, bool))
         candidates.append({
             "id": raw["id"],
-            "deadline": _utc(raw.get("deadline")),
+            "deadline": _policy_instant(raw.get("deadline")),
             "criticality": raw["criticality"],
-            "eligible": raw["eligible"],
+            "eligible": raw["eligible"] and not manual_review,
         })
     ids = [c["id"] for c in candidates]
     _require(len(set(ids)) == len(ids))
     canary_id = policy.get("canary_id")
     _require(canary_id is None or canary_id in ids)
     duration = policy.get("duration_seconds")
-    _require(_is_int(duration) and duration > 0)
+    _require(_is_int(duration) and 1 <= duration <= 86400)
+    max_parallel = policy.get("max_parallel", 1)
+    _require(_is_int(max_parallel) and 1 <= max_parallel <= 32)
     windows = _intervals(policy.get("windows"))
     blackouts = _intervals(policy.get("blackouts"))
     return candidates, windows, blackouts, timedelta(seconds=duration), canary_id
@@ -251,7 +285,7 @@ def _intervals(raw):
     parsed = []
     for item in raw:
         _require(isinstance(item, dict))
-        start, end = _utc(item.get("starts_at")), _utc(item.get("ends_at"))
+        start, end = _policy_instant(item.get("starts_at")), _policy_instant(item.get("ends_at"))
         _require(start < end)
         parsed.append((start, end))
     merged = []
@@ -322,6 +356,16 @@ def _utc(value):
     parsed = _parse_utc(value)
     _require(parsed is not None)
     return parsed
+
+
+def _policy_instant(value):
+    _require(isinstance(value, str))
+    try:
+        moment = datetime.fromisoformat(value)
+        _require(moment.utcoffset() is not None)
+        return moment.astimezone(timezone.utc)
+    except (ValueError, OverflowError) as error:
+        raise _Invalid from error
 
 
 def _format_utc(moment):
