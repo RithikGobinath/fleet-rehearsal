@@ -4,7 +4,6 @@ import os
 import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime
-from pathlib import Path
 from typing import Annotated, Literal
 
 import psycopg
@@ -14,6 +13,7 @@ from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 
 from fleet.settings import LocalSettings
+from fleet.storage import INVENTORY_PAGE_SQL, initialize_inventory
 
 
 ADVISORY_URL = "https://www.cisco.com/c/en/us/support/docs/csa/cisco-sa-cat9k-PtmD7bgy.html"
@@ -84,30 +84,8 @@ Database = Annotated[psycopg.Connection, Depends(get_db)]
 async def lifespan(app: FastAPI):
     settings = LocalSettings.from_env(os.environ)
     seed = json.loads(settings.fixture_path.read_text(encoding="utf-8"))
-    with psycopg.connect(settings.database_url) as conn, conn.cursor() as cur:
-        cur.execute("SELECT pg_advisory_xact_lock(812670)")
-        cur.execute(Path(__file__).with_name("schema.sql").read_text(encoding="utf-8"))
-        cur.executemany("INSERT INTO tenants (id, label) VALUES (%s, %s) ON CONFLICT DO NOTHING", seed["tenants"])
-        cur.executemany(
-            "INSERT INTO sites (tenant_id, id, label) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
-            seed["sites"],
-        )
-        cur.executemany(
-            "INSERT INTO principals (id, label) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-            seed["principals"],
-        )
-        cur.executemany(
-            "INSERT INTO grants (principal_id, tenant_id, site_id) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
-            seed["grants"],
-        )
-        cur.executemany(
-            """INSERT INTO assets (
-                tenant_id, id, site_id, name, product, running_release,
-                release_status, trunk_port, trustsec, macsec, observed_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT DO NOTHING""",
-            seed["assets"],
-        )
+    with psycopg.connect(settings.database_url) as conn:
+        initialize_inventory(conn, seed)
     app.state.settings = settings
     yield
 
@@ -187,17 +165,7 @@ def inventory(
 ) -> InventoryPage:
     require_tenant(db, caller, tenant_id)
     result = db.execute(
-        """WITH visible AS MATERIALIZED (
-            SELECT e.* FROM inventory_evidence e
-            JOIN grants g ON (g.tenant_id, g.site_id) = (e.tenant_id, e.site_id)
-            WHERE g.principal_id = %(caller)s AND e.tenant_id = %(tenant)s
-                AND (%(finding)s::text IS NULL OR e.finding = %(finding)s)
-        ), page AS (
-            SELECT * FROM visible WHERE %(after)s::text IS NULL OR id > %(after)s
-            ORDER BY id LIMIT %(fetch)s
-        )
-        SELECT (SELECT count(*) FROM visible) AS total,
-            COALESCE((SELECT json_agg(page ORDER BY id) FROM page), '[]'::json) AS items""",
+        INVENTORY_PAGE_SQL,
         {"caller": caller, "tenant": tenant_id, "finding": finding, "after": after, "fetch": limit + 1},
     ).fetchone()
     rows = result["items"]

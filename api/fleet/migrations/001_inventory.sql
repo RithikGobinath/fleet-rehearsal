@@ -1,3 +1,4 @@
+-- Also adopts local demo databases created before migration tracking.
 CREATE TABLE IF NOT EXISTS tenants (
     id text PRIMARY KEY,
     label text NOT NULL

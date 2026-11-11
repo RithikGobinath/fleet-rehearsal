@@ -73,6 +73,7 @@ class InventoryTests(unittest.TestCase):
                 self.assertEqual(detail["finding"], finding)
                 self.assertEqual(detail["advisory_id"], "CVE-2025-20311")
                 self.assertTrue(detail["reason"])
+                self.assertNotIn("raw_evidence", detail)
 
     def test_stable_pagination_and_count(self):
         token = self.tokens["demo-northstar"]
