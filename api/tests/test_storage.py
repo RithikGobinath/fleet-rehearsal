@@ -9,7 +9,7 @@ from psycopg.errors import ForeignKeyViolation
 from psycopg.rows import dict_row
 
 from fleet.main import require_site_role
-from fleet.storage import INVENTORY_PAGE_SQL, initialize_inventory
+from fleet.storage import INVENTORY_PAGE_SQL, MIGRATIONS, initialize_inventory
 
 
 SEED = json.loads(Path("fixtures/inventory.json").read_text(encoding="utf-8"))
@@ -39,7 +39,7 @@ class StorageTests(unittest.TestCase):
             initialize_inventory(conn, SEED)
             assets, versions = read_state()
             self.assertEqual(len(assets), 5)
-            self.assertEqual([row[0] for row in versions], [1, 2, 3])
+            self.assertEqual([row[0] for row in versions], list(range(1, len(MIGRATIONS) + 1)))
             self.assertEqual(assets[0][2], "Existing device")
             self.assertIsNone(assets[0][3]["trustsec"])
             self.assertIsNone(assets[2][3]["trunk_port"])

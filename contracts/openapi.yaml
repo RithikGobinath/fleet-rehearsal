@@ -17,6 +17,8 @@ paths:
     $ref: './openapi.json#/paths/~1v1~1assets'
   /v1/assets/{asset_id}:
     $ref: './openapi.json#/paths/~1v1~1assets~1{asset_id}'
+  /v1/tenants/{tenant_id}/sites/{site_id}/inventory/import:
+    $ref: './openapi.json#/paths/~1v1~1tenants~1{tenant_id}~1sites~1{site_id}~1inventory~1import'
   /v1/tenants/{tenant_id}/sites/{site_id}/plans/{plan_id}/revisions:
     parameters:
       - $ref: '#/components/parameters/Tenant'

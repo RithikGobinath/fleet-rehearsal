@@ -89,6 +89,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/tenants/{tenant_id}/sites/{site_id}/inventory/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Inventory */
+        post: operations["importInventory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/tenants/{tenant_id}/sites/{site_id}/plans/{plan_id}/revisions": {
         parameters: {
             query?: never;
@@ -684,6 +701,119 @@ export interface operations {
             };
             /** @description Asset not found in granted scope */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    importInventory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Rows */
+                    rows: {
+                        /** Id */
+                        id: string;
+                        /** Macsec */
+                        macsec?: boolean | null;
+                        /** Name */
+                        name: string;
+                        /**
+                         * Observed At
+                         * Format: date-time
+                         */
+                        observed_at: string;
+                        /**
+                         * Product
+                         * @constant
+                         */
+                        product: "Catalyst 9300";
+                        /**
+                         * Release Status
+                         * @enum {string}
+                         */
+                        release_status: "affected" | "unaffected" | "unknown";
+                        /** Running Release */
+                        running_release: string;
+                        /** Source Revision */
+                        source_revision: number;
+                        /** Trunk Port */
+                        trunk_port?: boolean | null;
+                        /** Trustsec */
+                        trustsec?: boolean | null;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
+                };
+            };
+            /** @description Invalid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Operator role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Site not found in granted scope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Batch rejected without changes; row conflicts */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Batch too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description JSON required */
+            415: {
                 headers: {
                     [name: string]: unknown;
                 };
