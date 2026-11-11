@@ -1,0 +1,441 @@
+openapi: 3.1.0
+info:
+  title: Fleet Rehearsal API
+  version: 0.2.0-draft
+  description: Inventory and demo identity routes are live. Operations marked planned are contracts for the synthetic simulator.
+servers:
+  - url: /api
+security: []
+paths:
+  /healthz:
+    $ref: './openapi.json#/paths/~1healthz'
+  /v1/demo/principals:
+    $ref: './openapi.json#/paths/~1v1~1demo~1principals'
+  /v1/demo/session:
+    $ref: './openapi.json#/paths/~1v1~1demo~1session'
+  /v1/assets:
+    $ref: './openapi.json#/paths/~1v1~1assets'
+  /v1/assets/{asset_id}:
+    $ref: './openapi.json#/paths/~1v1~1assets~1{asset_id}'
+  /v1/tenants/{tenant_id}/sites/{site_id}/plans/{plan_id}/revisions:
+    parameters:
+      - $ref: '#/components/parameters/Tenant'
+      - $ref: '#/components/parameters/Site'
+      - $ref: '#/components/parameters/Plan'
+    post:
+      operationId: previewPlan
+      security: [{HTTPBearer: []}]
+      summary: Generate and save a plan preview
+      x-implementation-status: planned
+      description: Requires a partner proposer grant. The server takes the latest applied snapshot and active site policy. Supply base_revision 0 only for a new plan. A saved revision may have no schedulable waves.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [base_revision]
+              properties:
+                base_revision: {type: integer, minimum: 0}
+            example: {base_revision: 0}
+      responses:
+        '201':
+          description: Immutable preview saved
+          headers:
+            Location: {$ref: '#/components/headers/ResourceLocation'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PlanRevision'}
+              examples:
+                healthy: {$ref: '#/components/examples/HealthyPlan'}
+                needsEvidence:
+                  value:
+                    plan_id: dispatch
+                    revision: 1
+                    snapshot_revision: 1
+                    policy_revision: 1
+                    fingerprint: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+                    waves: []
+                    deferred: [{asset_id: harbor-01, reason: missing_evidence}]
+                    approval: null
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/WriteConflict'}
+        '422': {$ref: '#/components/responses/InvalidRequest'}
+  /v1/tenants/{tenant_id}/sites/{site_id}/plans/{plan_id}/revisions/{revision}:
+    parameters:
+      - $ref: '#/components/parameters/Tenant'
+      - $ref: '#/components/parameters/Site'
+      - $ref: '#/components/parameters/Plan'
+      - $ref: '#/components/parameters/Revision'
+    get:
+      operationId: readPlanRevision
+      security: [{HTTPBearer: []}]
+      summary: Read a saved plan revision and its approval
+      x-implementation-status: planned
+      responses:
+        '200':
+          description: Plan revision and current approval, if any
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PlanRevision'}
+              examples:
+                healthy: {$ref: '#/components/examples/HealthyPlan'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/InvalidRequest'}
+  /v1/tenants/{tenant_id}/sites/{site_id}/plans/{plan_id}/revisions/{revision}/approval:
+    parameters:
+      - $ref: '#/components/parameters/Tenant'
+      - $ref: '#/components/parameters/Site'
+      - $ref: '#/components/parameters/Plan'
+      - $ref: '#/components/parameters/Revision'
+    post:
+      operationId: approvePlanRevision
+      security: [{HTTPBearer: []}]
+      summary: Approve the exact current revision
+      x-implementation-status: planned
+      description: Requires an assigned customer approver different from the proposer. A superseded revision or fingerprint mismatch is a stale_revision conflict.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: {$ref: '#/components/requestBodies/ExpectedFingerprint'}
+      responses:
+        '201':
+          description: Approval saved for this revision only
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Approval'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/WriteConflict'}
+        '422': {$ref: '#/components/responses/InvalidRequest'}
+  /v1/tenants/{tenant_id}/sites/{site_id}/plans/{plan_id}/revisions/{revision}/waves/{wave_number}/runs:
+    parameters:
+      - $ref: '#/components/parameters/Tenant'
+      - $ref: '#/components/parameters/Site'
+      - $ref: '#/components/parameters/Plan'
+      - $ref: '#/components/parameters/Revision'
+      - name: wave_number
+        in: path
+        required: true
+        schema: {type: integer, minimum: 1}
+    post:
+      operationId: startRehearsal
+      security: [{HTTPBearer: []}]
+      summary: Revalidate and reserve one simulated wave
+      x-implementation-status: planned
+      description: Requires a site operator, the exact approval, and fresh applied evidence. A blocked decision commits audit evidence without creating a run or starting the simulator.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody: {$ref: '#/components/requestBodies/ExpectedFingerprint'}
+      responses:
+        '202':
+          description: A simulated run was reserved and queued
+          headers:
+            Location: {$ref: '#/components/headers/ResourceLocation'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Run'}
+              example:
+                run_id: run-001
+                plan_id: dispatch
+                revision: 1
+                wave_number: 1
+                snapshot_revision: 1
+                state: queued
+                devices: []
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: Start was refused. Only a recorded wave block returns an audit ID.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              examples:
+                peerDown:
+                  value:
+                    code: alternate_path_unavailable
+                    detail: The dispatch service would lose its remaining uplink.
+                    snapshot_revision: 2
+                    audit_id: audit-002
+                evidencePending:
+                  value: {code: pending_evidence, detail: A relevant accepted observation is not yet applied., audit_id: audit-003}
+                staleRevision: {$ref: '#/components/examples/StaleRevision'}
+                keyReused: {$ref: '#/components/examples/KeyReused'}
+        '422': {$ref: '#/components/responses/InvalidRequest'}
+  /v1/tenants/{tenant_id}/sites/{site_id}/runs/{run_id}:
+    parameters:
+      - $ref: '#/components/parameters/Tenant'
+      - $ref: '#/components/parameters/Site'
+      - name: run_id
+        in: path
+        required: true
+        schema: {$ref: '#/components/schemas/Id'}
+    get:
+      operationId: readRehearsal
+      security: [{HTTPBearer: []}]
+      summary: Read simulated run status and device outcomes
+      x-implementation-status: planned
+      responses:
+        '200':
+          description: Current run status
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Run'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/InvalidRequest'}
+  /v1/tenants/{tenant_id}/sites/{site_id}/audit:
+    parameters:
+      - $ref: '#/components/parameters/Tenant'
+      - $ref: '#/components/parameters/Site'
+    get:
+      operationId: listSiteAudit
+      security: [{HTTPBearer: []}]
+      summary: Read the site's audit timeline
+      x-implementation-status: planned
+      description: Returns events in ascending append order. Repeat the same scoped query using next_cursor as after until it is null.
+      parameters:
+        - name: after
+          in: query
+          schema: {type: string, maxLength: 512}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 25}
+      responses:
+        '200':
+          description: Scoped page of audit events
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AuditPage'}
+              example:
+                items:
+                  - audit_id: audit-002
+                    actor_id: demo-northstar
+                    occurred_at: '2026-11-10T19:01:00Z'
+                    correlation_id: 'a2b9b6c0-e8e5-457c-86a4-791313ff726a'
+                    kind: wave_blocked
+                    reason: alternate_path_unavailable
+                    plan_id: dispatch
+                    revision: 1
+                    wave_number: 1
+                    snapshot_revision: 2
+                next_cursor: null
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/InvalidRequest'}
+components:
+  securitySchemes:
+    HTTPBearer: {$ref: './openapi.json#/components/securitySchemes/HTTPBearer'}
+  parameters:
+    Tenant:
+      {name: tenant_id, in: path, required: true, schema: {$ref: '#/components/schemas/Id'}}
+    Site:
+      {name: site_id, in: path, required: true, schema: {$ref: '#/components/schemas/Id'}}
+    Plan:
+      {name: plan_id, in: path, required: true, schema: {$ref: '#/components/schemas/Id'}}
+    Revision:
+      {name: revision, in: path, required: true, schema: {type: integer, minimum: 1}}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Reuse only for the same write and intent. The server authorizes every retry before looking up the stored result.
+      schema: {type: string, pattern: '^[A-Za-z0-9_-]{16,128}$'}
+  headers:
+    ResourceLocation:
+      required: true
+      description: Same-origin path under /api for the new resource
+      schema: {type: string}
+  requestBodies:
+    ExpectedFingerprint:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [expected_fingerprint]
+            properties:
+              expected_fingerprint: {$ref: '#/components/schemas/Fingerprint'}
+          example: {expected_fingerprint: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'}
+  responses:
+    Unauthenticated:
+      description: Missing or invalid credentials
+      headers:
+        WWW-Authenticate:
+          schema: {type: string, const: Bearer}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example: {code: unauthenticated, detail: Sign in to continue.}
+    Forbidden:
+      description: Tenant access or the requested action is forbidden
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example: {code: forbidden, detail: This identity cannot approve a plan.}
+    NotFound:
+      description: The site is outside the caller's grants or the scoped resource does not exist
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example: {code: not_found, detail: Resource not found in granted sites.}
+    InvalidRequest:
+      description: An invalid path, body, header, query, or cursor
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example: {code: invalid_request, detail: The request is missing a valid idempotency key.}
+    WriteConflict:
+      description: Revision mismatch, invalid plan state, or conflicting key reuse
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          examples:
+            staleRevision: {$ref: '#/components/examples/StaleRevision'}
+            keyReused: {$ref: '#/components/examples/KeyReused'}
+  schemas:
+    Id: {type: string, pattern: '^[a-z0-9][a-z0-9-]{0,63}$'}
+    Fingerprint: {type: string, pattern: '^[a-f0-9]{64}$'}
+    Time: {type: string, format: date-time, pattern: 'Z$'}
+    Reason:
+      type: string
+      enum:
+        - invalid_configuration
+        - invalid_wave
+        - missing_evidence
+        - stale_candidate
+        - down_candidate
+        - alternate_path_unavailable
+        - not_eligible
+        - deadline_missed
+        - no_window_before_deadline
+        - canary_not_scheduled
+        - pending_evidence
+        - site_busy
+        - policy_changed
+        - outside_window
+        - prerequisite_incomplete
+        - already_rehearsed
+        - verification_failed
+    Error:
+      type: object
+      additionalProperties: false
+      required: [code, detail]
+      properties:
+        code:
+          anyOf:
+            - $ref: '#/components/schemas/Reason'
+            - enum: [unauthenticated, forbidden, not_found, invalid_request, stale_revision, invalid_plan_state, idempotency_conflict]
+        detail: {type: string}
+        current_revision: {type: integer, minimum: 1}
+        snapshot_revision: {type: integer, minimum: 1}
+        audit_id: {$ref: '#/components/schemas/Id'}
+    Wave:
+      type: object
+      required: [wave_number, device_ids, starts_at, ends_at, canary]
+      properties:
+        wave_number: {type: integer, minimum: 1}
+        device_ids: {type: array, minItems: 1, uniqueItems: true, items: {$ref: '#/components/schemas/Id'}}
+        starts_at: {$ref: '#/components/schemas/Time'}
+        ends_at: {$ref: '#/components/schemas/Time'}
+        canary: {type: boolean}
+    PlanRevision:
+      type: object
+      required: [plan_id, revision, snapshot_revision, policy_revision, fingerprint, waves, deferred, approval]
+      properties:
+        plan_id: {$ref: '#/components/schemas/Id'}
+        revision: {type: integer, minimum: 1}
+        snapshot_revision: {type: integer, minimum: 1}
+        policy_revision: {type: integer, minimum: 1}
+        fingerprint: {$ref: '#/components/schemas/Fingerprint'}
+        waves: {type: array, items: {$ref: '#/components/schemas/Wave'}}
+        deferred:
+          type: array
+          items:
+            type: object
+            required: [asset_id, reason]
+            properties:
+              asset_id: {$ref: '#/components/schemas/Id'}
+              reason: {$ref: '#/components/schemas/Reason'}
+        approval:
+          anyOf:
+            - $ref: '#/components/schemas/Approval'
+            - type: 'null'
+    Approval:
+      type: object
+      required: [fingerprint, approved_by, approved_at, audit_id]
+      properties:
+        fingerprint: {$ref: '#/components/schemas/Fingerprint'}
+        approved_by: {$ref: '#/components/schemas/Id'}
+        approved_at: {$ref: '#/components/schemas/Time'}
+        audit_id: {$ref: '#/components/schemas/Id'}
+    Run:
+      type: object
+      required: [run_id, plan_id, revision, wave_number, snapshot_revision, state, devices]
+      properties:
+        run_id: {$ref: '#/components/schemas/Id'}
+        plan_id: {$ref: '#/components/schemas/Id'}
+        revision: {type: integer, minimum: 1}
+        wave_number: {type: integer, minimum: 1}
+        snapshot_revision: {type: integer, minimum: 1}
+        state: {enum: [queued, running, succeeded, paused, partial_failure, rolled_back, failed]}
+        reason: {$ref: '#/components/schemas/Reason'}
+        devices:
+          type: array
+          items:
+            type: object
+            required: [asset_id, outcome]
+            properties:
+              asset_id: {$ref: '#/components/schemas/Id'}
+              outcome: {enum: [succeeded, failed, rolled_back, skipped]}
+    AuditPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        next_cursor: {type: [string, 'null']}
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/AuditEvent'}
+    AuditEvent:
+      type: object
+      required: [audit_id, actor_id, occurred_at, correlation_id, kind]
+      properties:
+        audit_id: {$ref: '#/components/schemas/Id'}
+        actor_id: {$ref: '#/components/schemas/Id'}
+        occurred_at: {$ref: '#/components/schemas/Time'}
+        correlation_id: {type: string, format: uuid}
+        kind: {enum: [plan_previewed, plan_approved, wave_blocked, wave_reserved, simulator_started, run_updated]}
+        reason: {$ref: '#/components/schemas/Reason'}
+        plan_id: {$ref: '#/components/schemas/Id'}
+        revision: {type: integer, minimum: 1}
+        wave_number: {type: integer, minimum: 1}
+        run_id: {$ref: '#/components/schemas/Id'}
+        snapshot_revision: {type: integer, minimum: 1}
+  examples:
+    HealthyPlan:
+      value:
+        plan_id: dispatch
+        revision: 1
+        snapshot_revision: 1
+        policy_revision: 1
+        fingerprint: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        waves:
+          - {wave_number: 1, device_ids: [harbor-01], starts_at: '2026-11-10T19:00:00Z', ends_at: '2026-11-10T19:05:00Z', canary: true}
+          - {wave_number: 2, device_ids: [harbor-02], starts_at: '2026-11-10T19:10:00Z', ends_at: '2026-11-10T19:15:00Z', canary: false}
+        deferred: [{asset_id: harbor-03, reason: missing_evidence}]
+        approval: null
+    StaleRevision:
+      value: {code: stale_revision, current_revision: 2, detail: Reload the current plan revision before retrying.}
+    KeyReused:
+      value: {code: idempotency_conflict, detail: This key was already used for a different request.}

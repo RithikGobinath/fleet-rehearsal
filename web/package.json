@@ -7,7 +7,7 @@
   },
   "scripts": {
     "build": "ng build",
-    "types:api": "openapi-typescript ../contracts/openapi.json -o src/api.generated.ts",
+    "types:api": "openapi-typescript ../contracts/openapi.yaml -o src/api.generated.ts",
     "test:e2e": "playwright test"
   },
   "dependencies": {

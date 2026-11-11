@@ -1,0 +1,38 @@
+{
+  "partition_key": "northstar/harbor-02",
+  "events": {
+    "initial": {
+      "schema_version": 1,
+      "event_id": "4b67e59c-c888-4786-b570-9a240e955bf4",
+      "tenant_id": "northstar", "site_id": "harbor", "asset_id": "harbor-02",
+      "source_id": "synthetic-health", "source_revision": 4,
+      "observed_at": "2026-11-10T18:59:00Z", "received_at": "2026-11-10T18:59:01Z",
+      "evidence": {"healthy": true}
+    },
+    "peer_down": {
+      "schema_version": 1,
+      "event_id": "51196ba8-3936-4fca-a0c2-36b5d7d2b8e0",
+      "tenant_id": "northstar", "site_id": "harbor", "asset_id": "harbor-02",
+      "source_id": "synthetic-health", "source_revision": 5,
+      "observed_at": "2026-11-10T19:00:30Z", "received_at": "2026-11-10T19:00:31Z",
+      "evidence": {"healthy": false}
+    },
+    "late": {
+      "schema_version": 1,
+      "event_id": "87d84287-e312-4ec5-a578-1bf6c958ef25",
+      "tenant_id": "northstar", "site_id": "harbor", "asset_id": "harbor-02",
+      "source_id": "synthetic-health", "source_revision": 3,
+      "observed_at": "2026-11-10T18:58:00Z", "received_at": "2026-11-10T19:01:01Z",
+      "evidence": {"healthy": true}
+    }
+  },
+  "sequence": [
+    {"action": "accept", "event": "initial", "accepted": 4, "applied": null, "reason": "pending_evidence"},
+    {"action": "apply", "event": "initial", "accepted": 4, "applied": 4, "reason": null},
+    {"action": "accept", "event": "peer_down", "accepted": 5, "applied": 4, "reason": "pending_evidence"},
+    {"action": "apply", "event": "peer_down", "accepted": 5, "applied": 5, "reason": "alternate_path_unavailable"},
+    {"action": "apply", "event": "peer_down", "accepted": 5, "applied": 5, "reason": "alternate_path_unavailable"},
+    {"action": "accept", "event": "late", "accepted": 5, "applied": 5, "reason": "alternate_path_unavailable"},
+    {"action": "apply", "event": "late", "accepted": 5, "applied": 5, "reason": "alternate_path_unavailable"}
+  ]
+}

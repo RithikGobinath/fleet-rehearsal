@@ -21,40 +21,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/assets": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Inventory */
-        get: operations["inventory_v1_assets_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/assets/{asset_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Evidence */
-        get: operations["evidence_v1_assets__asset_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/demo/principals": {
         parameters: {
             query?: never;
@@ -89,10 +55,313 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Inventory */
+        get: operations["inventory_v1_assets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/assets/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Evidence */
+        get: operations["evidence_v1_assets__asset_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tenants/{tenant_id}/sites/{site_id}/plans/{plan_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: components["parameters"]["Tenant"];
+                site_id: components["parameters"]["Site"];
+                plan_id: components["parameters"]["Plan"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate and save a plan preview
+         * @description Requires a partner proposer grant. The server takes the latest applied snapshot and active site policy. Supply base_revision 0 only for a new plan. A saved revision may have no schedulable waves.
+         */
+        post: operations["previewPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tenants/{tenant_id}/sites/{site_id}/plans/{plan_id}/revisions/{revision}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: components["parameters"]["Tenant"];
+                site_id: components["parameters"]["Site"];
+                plan_id: components["parameters"]["Plan"];
+                revision: components["parameters"]["Revision"];
+            };
+            cookie?: never;
+        };
+        /** Read a saved plan revision and its approval */
+        get: operations["readPlanRevision"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tenants/{tenant_id}/sites/{site_id}/plans/{plan_id}/revisions/{revision}/approval": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: components["parameters"]["Tenant"];
+                site_id: components["parameters"]["Site"];
+                plan_id: components["parameters"]["Plan"];
+                revision: components["parameters"]["Revision"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve the exact current revision
+         * @description Requires an assigned customer approver different from the proposer. A superseded revision or fingerprint mismatch is a stale_revision conflict.
+         */
+        post: operations["approvePlanRevision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tenants/{tenant_id}/sites/{site_id}/plans/{plan_id}/revisions/{revision}/waves/{wave_number}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: components["parameters"]["Tenant"];
+                site_id: components["parameters"]["Site"];
+                plan_id: components["parameters"]["Plan"];
+                revision: components["parameters"]["Revision"];
+                wave_number: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revalidate and reserve one simulated wave
+         * @description Requires a site operator, the exact approval, and fresh applied evidence. A blocked decision commits audit evidence without creating a run or starting the simulator.
+         */
+        post: operations["startRehearsal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tenants/{tenant_id}/sites/{site_id}/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: components["parameters"]["Tenant"];
+                site_id: components["parameters"]["Site"];
+                run_id: components["schemas"]["Id"];
+            };
+            cookie?: never;
+        };
+        /** Read simulated run status and device outcomes */
+        get: operations["readRehearsal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tenants/{tenant_id}/sites/{site_id}/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: components["parameters"]["Tenant"];
+                site_id: components["parameters"]["Site"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the site's audit timeline
+         * @description Returns events in ascending append order. Repeat the same scoped query using next_cursor as after until it is null.
+         */
+        get: operations["listSiteAudit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        Id: string;
+        Fingerprint: string;
+        /** Format: date-time */
+        Time: string;
+        /** @enum {string} */
+        Reason: "invalid_configuration" | "invalid_wave" | "missing_evidence" | "stale_candidate" | "down_candidate" | "alternate_path_unavailable" | "not_eligible" | "deadline_missed" | "no_window_before_deadline" | "canary_not_scheduled" | "pending_evidence" | "site_busy" | "policy_changed" | "outside_window" | "prerequisite_incomplete" | "already_rehearsed" | "verification_failed";
+        Error: {
+            code: components["schemas"]["Reason"] | ("unauthenticated" | "forbidden" | "not_found" | "invalid_request" | "stale_revision" | "invalid_plan_state" | "idempotency_conflict");
+            detail: string;
+            current_revision?: number;
+            snapshot_revision?: number;
+            audit_id?: components["schemas"]["Id"];
+        };
+        Wave: {
+            wave_number: number;
+            device_ids: components["schemas"]["Id"][];
+            starts_at: components["schemas"]["Time"];
+            ends_at: components["schemas"]["Time"];
+            canary: boolean;
+        };
+        PlanRevision: {
+            plan_id: components["schemas"]["Id"];
+            revision: number;
+            snapshot_revision: number;
+            policy_revision: number;
+            fingerprint: components["schemas"]["Fingerprint"];
+            waves: components["schemas"]["Wave"][];
+            deferred: {
+                asset_id: components["schemas"]["Id"];
+                reason: components["schemas"]["Reason"];
+            }[];
+            approval: components["schemas"]["Approval"] | null;
+        };
+        Approval: {
+            fingerprint: components["schemas"]["Fingerprint"];
+            approved_by: components["schemas"]["Id"];
+            approved_at: components["schemas"]["Time"];
+            audit_id: components["schemas"]["Id"];
+        };
+        Run: {
+            run_id: components["schemas"]["Id"];
+            plan_id: components["schemas"]["Id"];
+            revision: number;
+            wave_number: number;
+            snapshot_revision: number;
+            /** @enum {unknown} */
+            state: "queued" | "running" | "succeeded" | "paused" | "partial_failure" | "rolled_back" | "failed";
+            reason?: components["schemas"]["Reason"];
+            devices: {
+                asset_id: components["schemas"]["Id"];
+                /** @enum {unknown} */
+                outcome: "succeeded" | "failed" | "rolled_back" | "skipped";
+            }[];
+        };
+        AuditPage: {
+            next_cursor: string | null;
+            items: components["schemas"]["AuditEvent"][];
+        };
+        AuditEvent: {
+            audit_id: components["schemas"]["Id"];
+            actor_id: components["schemas"]["Id"];
+            occurred_at: components["schemas"]["Time"];
+            /** Format: uuid */
+            correlation_id: string;
+            /** @enum {unknown} */
+            kind: "plan_previewed" | "plan_approved" | "wave_blocked" | "wave_reserved" | "simulator_started" | "run_updated";
+            reason?: components["schemas"]["Reason"];
+            plan_id?: components["schemas"]["Id"];
+            revision?: number;
+            wave_number?: number;
+            run_id?: components["schemas"]["Id"];
+            snapshot_revision?: number;
+        };
+        /** Tenant */
+        Tenant: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+        };
+        /** Principal */
+        Principal: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Tenants */
+            tenants: components["schemas"]["Tenant"][];
+        };
+        /** PrincipalList */
+        PrincipalList: {
+            /** Items */
+            items: components["schemas"]["Principal"][];
+        };
+        /** SessionRequest */
+        SessionRequest: {
+            /** Principal Id */
+            principal_id: string;
+        };
+        /** SessionResponse */
+        SessionResponse: {
+            /** Access Token */
+            access_token: string;
+            /**
+             * Token Type
+             * @default bearer
+             * @constant
+             */
+            token_type: "bearer";
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
         /** Asset */
         Asset: {
             /**
@@ -139,11 +408,6 @@ export interface components {
             /** Tenant Id */
             tenant_id: string;
         };
-        /** HTTPValidationError */
-        HTTPValidationError: {
-            /** Detail */
-            detail?: components["schemas"]["ValidationError"][];
-        };
         /** InventoryPage */
         InventoryPage: {
             /** Items */
@@ -153,61 +417,105 @@ export interface components {
             /** Total */
             total: number;
         };
-        /** Principal */
-        Principal: {
-            /** Id */
-            id: string;
-            /** Label */
-            label: string;
-            /** Tenants */
-            tenants: components["schemas"]["Tenant"][];
+    };
+    responses: {
+        /** @description Missing or invalid credentials */
+        Unauthenticated: {
+            headers: {
+                "WWW-Authenticate"?: "Bearer";
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "unauthenticated",
+                 *       "detail": "Sign in to continue."
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
         };
-        /** PrincipalList */
-        PrincipalList: {
-            /** Items */
-            items: components["schemas"]["Principal"][];
+        /** @description Tenant access or the requested action is forbidden */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "forbidden",
+                 *       "detail": "This identity cannot approve a plan."
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
         };
-        /** SessionRequest */
-        SessionRequest: {
-            /** Principal Id */
-            principal_id: string;
+        /** @description The site is outside the caller's grants or the scoped resource does not exist */
+        NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "not_found",
+                 *       "detail": "Resource not found in granted sites."
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
         };
-        /** SessionResponse */
-        SessionResponse: {
-            /** Access Token */
-            access_token: string;
-            /**
-             * Token Type
-             * @default bearer
-             * @constant
-             */
-            token_type: "bearer";
+        /** @description An invalid path, body, header, query, or cursor */
+        InvalidRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "invalid_request",
+                 *       "detail": "The request is missing a valid idempotency key."
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
         };
-        /** Tenant */
-        Tenant: {
-            /** Id */
-            id: string;
-            /** Label */
-            label: string;
-        };
-        /** ValidationError */
-        ValidationError: {
-            /** Context */
-            ctx?: Record<string, never>;
-            /** Input */
-            input?: unknown;
-            /** Location */
-            loc: (string | number)[];
-            /** Message */
-            msg: string;
-            /** Error Type */
-            type: string;
+        /** @description Revision mismatch, invalid plan state, or conflicting key reuse */
+        WriteConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
         };
     };
-    responses: never;
-    parameters: never;
-    requestBodies: never;
-    headers: never;
+    parameters: {
+        Tenant: components["schemas"]["Id"];
+        Site: components["schemas"]["Id"];
+        Plan: components["schemas"]["Id"];
+        Revision: number;
+        /** @description Reuse only for the same write and intent. The server authorizes every retry before looking up the stored result. */
+        IdempotencyKey: string;
+    };
+    requestBodies: {
+        ExpectedFingerprint: {
+            content: {
+                /**
+                 * @example {
+                 *       "expected_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                 *     }
+                 */
+                "application/json": {
+                    expected_fingerprint: components["schemas"]["Fingerprint"];
+                };
+            };
+        };
+    };
+    headers: {
+        /** @description Same-origin path under /api for the new resource */
+        ResourceLocation: string;
+    };
     pathItems: never;
 }
 export type $defs = Record<string, never>;
@@ -230,6 +538,59 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+        };
+    };
+    demo_principals_v1_demo_principals_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrincipalList"];
+                };
+            };
+        };
+    };
+    new_session_v1_demo_session_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -336,57 +697,241 @@ export interface operations {
             };
         };
     };
-    demo_principals_v1_demo_principals_get: {
+    previewPlan: {
         parameters: {
             query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PrincipalList"];
-                };
+            header: {
+                /** @description Reuse only for the same write and intent. The server authorizes every retry before looking up the stored result. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
             };
-        };
-    };
-    new_session_v1_demo_session_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
+            path: {
+                tenant_id: components["parameters"]["Tenant"];
+                site_id: components["parameters"]["Site"];
+                plan_id: components["parameters"]["Plan"];
+            };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SessionRequest"];
+                /**
+                 * @example {
+                 *       "base_revision": 0
+                 *     }
+                 */
+                "application/json": {
+                    base_revision: number;
+                };
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description Immutable preview saved */
+            201: {
+                headers: {
+                    Location: components["headers"]["ResourceLocation"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanRevision"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["WriteConflict"];
+            422: components["responses"]["InvalidRequest"];
+        };
+    };
+    readPlanRevision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: components["parameters"]["Tenant"];
+                site_id: components["parameters"]["Site"];
+                plan_id: components["parameters"]["Plan"];
+                revision: components["parameters"]["Revision"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Plan revision and current approval, if any */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionResponse"];
+                    "application/json": components["schemas"]["PlanRevision"];
                 };
             };
-            /** @description Validation Error */
-            422: {
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["InvalidRequest"];
+        };
+    };
+    approvePlanRevision: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Reuse only for the same write and intent. The server authorizes every retry before looking up the stored result. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                tenant_id: components["parameters"]["Tenant"];
+                site_id: components["parameters"]["Site"];
+                plan_id: components["parameters"]["Plan"];
+                revision: components["parameters"]["Revision"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["ExpectedFingerprint"];
+        responses: {
+            /** @description Approval saved for this revision only */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["Approval"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["WriteConflict"];
+            422: components["responses"]["InvalidRequest"];
+        };
+    };
+    startRehearsal: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Reuse only for the same write and intent. The server authorizes every retry before looking up the stored result. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                tenant_id: components["parameters"]["Tenant"];
+                site_id: components["parameters"]["Site"];
+                plan_id: components["parameters"]["Plan"];
+                revision: components["parameters"]["Revision"];
+                wave_number: number;
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["ExpectedFingerprint"];
+        responses: {
+            /** @description A simulated run was reserved and queued */
+            202: {
+                headers: {
+                    Location: components["headers"]["ResourceLocation"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "run_id": "run-001",
+                     *       "plan_id": "dispatch",
+                     *       "revision": 1,
+                     *       "wave_number": 1,
+                     *       "snapshot_revision": 1,
+                     *       "state": "queued",
+                     *       "devices": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Start was refused. Only a recorded wave block returns an audit ID. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["InvalidRequest"];
+        };
+    };
+    readRehearsal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: components["parameters"]["Tenant"];
+                site_id: components["parameters"]["Site"];
+                run_id: components["schemas"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current run status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["InvalidRequest"];
+        };
+    };
+    listSiteAudit: {
+        parameters: {
+            query?: {
+                after?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                tenant_id: components["parameters"]["Tenant"];
+                site_id: components["parameters"]["Site"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Scoped page of audit events */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "items": [
+                     *         {
+                     *           "audit_id": "audit-002",
+                     *           "actor_id": "demo-northstar",
+                     *           "occurred_at": "2026-11-10T19:01:00Z",
+                     *           "correlation_id": "a2b9b6c0-e8e5-457c-86a4-791313ff726a",
+                     *           "kind": "wave_blocked",
+                     *           "reason": "alternate_path_unavailable",
+                     *           "plan_id": "dispatch",
+                     *           "revision": 1,
+                     *           "wave_number": 1,
+                     *           "snapshot_revision": 2
+                     *         }
+                     *       ],
+                     *       "next_cursor": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["AuditPage"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["InvalidRequest"];
         };
     };
 }

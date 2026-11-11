@@ -7,13 +7,27 @@
     "devices": {
       "harbor-01": {"healthy": true, "observed_at": "2026-11-10T18:59:00Z", "redundancy_group": "harbor-uplink"},
       "harbor-02": {"healthy": true, "observed_at": "2026-11-10T18:59:00Z", "redundancy_group": "harbor-uplink"},
+      "harbor-03": {"healthy": null, "observed_at": null},
       "service-edge": {"healthy": true, "observed_at": "2026-11-10T18:59:00Z"}
     },
     "links": [["service-edge", "harbor-01"], ["service-edge", "harbor-02"]],
     "uplinks": ["harbor-01", "harbor-02"],
     "services": {"dispatch": "service-edge"}
   },
-  "wave": {"device_ids": ["harbor-01"], "starts_at": "2026-11-10T19:00:00Z", "ends_at": "2026-11-10T19:05:00Z"},
+  "policy": {
+    "canary_id": "harbor-01",
+    "duration_seconds": 300,
+    "candidates": [
+      {"id": "harbor-01", "eligible": true, "criticality": 2, "deadline": "2026-11-10T19:25:00Z"},
+      {"id": "harbor-02", "eligible": true, "criticality": 1, "deadline": "2026-11-10T19:20:00Z"},
+      {"id": "harbor-03", "eligible": true, "criticality": 1, "deadline": "2026-11-10T19:30:00Z"}
+    ],
+    "windows": [{"starts_at": "2026-11-10T19:00:00Z", "ends_at": "2026-11-10T19:30:00Z"}],
+    "blackouts": [{"starts_at": "2026-11-10T19:05:00Z", "ends_at": "2026-11-10T19:10:00Z"}]
+  },
+  "wave": {"device_ids": ["harbor-01"], "starts_at": "2026-11-10T19:00:00Z", "ends_at": "2026-11-10T19:05:00Z", "canary": true},
+  "expected_second_wave": {"device_ids": ["harbor-02"], "starts_at": "2026-11-10T19:10:00Z", "ends_at": "2026-11-10T19:15:00Z", "canary": false},
+  "expected_deferred": [{"id": "harbor-03", "reason": "missing_evidence"}],
   "after_approval": {"revision": 2, "device_id": "harbor-02", "healthy": false, "observed_at": "2026-11-10T19:00:30Z"},
   "revalidate_at": "2026-11-10T19:01:00Z",
   "expected_before": {"allowed": true, "reason": null},

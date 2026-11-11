@@ -20,4 +20,5 @@ The Compose configuration uses Python 3.12 and Node.js 24 and installs dependenc
 
 - [GitHub build map](docs/build-map.md) contains the flowcharts, dependencies, model assignments, and acceptance checks.
 - [Release scope and acceptance](docs/scope.md) defines the maintenance rehearsal demo.
+- [API contract](docs/first-slice-api.md) distinguishes the live inventory interface from planned rehearsal routes.
 - [Worktree ownership and issue views](docs/delivery.md) explain how to pick up a block and hand it off.
