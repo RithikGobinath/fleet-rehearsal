@@ -177,7 +177,7 @@ export interface paths {
         put?: never;
         /**
          * Revalidate and reserve one simulated wave
-         * @description Requires a site operator, the exact approval, and fresh applied evidence. A blocked decision commits audit evidence without creating a run or starting the simulator.
+         * @description Requires a site operator, the exact approval, and fresh applied evidence. A block before reservation commits audit evidence without creating a run. A later block is visible on the queued run.
          */
         post: operations["startRehearsal"];
         delete?: never;
@@ -239,9 +239,9 @@ export interface components {
         /** Format: date-time */
         Time: string;
         /** @enum {string} */
-        Reason: "invalid_configuration" | "invalid_wave" | "missing_evidence" | "stale_candidate" | "down_candidate" | "alternate_path_unavailable" | "not_eligible" | "deadline_missed" | "no_window_before_deadline" | "canary_not_scheduled" | "pending_evidence" | "site_busy" | "policy_changed" | "outside_window" | "prerequisite_incomplete" | "already_rehearsed" | "verification_failed";
+        Reason: "invalid_configuration" | "invalid_wave" | "missing_evidence" | "stale_candidate" | "down_candidate" | "alternate_path_unavailable" | "not_eligible" | "deadline_missed" | "no_window_before_deadline" | "canary_not_scheduled" | "pending_evidence" | "site_busy" | "policy_changed" | "stale_revision" | "authorization_revoked" | "outside_window" | "prerequisite_incomplete" | "already_rehearsed" | "verification_failed";
         Error: {
-            code: components["schemas"]["Reason"] | ("unauthenticated" | "forbidden" | "not_found" | "invalid_request" | "stale_revision" | "invalid_plan_state" | "idempotency_conflict");
+            code: components["schemas"]["Reason"] | ("unauthenticated" | "forbidden" | "not_found" | "invalid_request" | "invalid_plan_state" | "idempotency_conflict");
             detail: string;
             current_revision?: number;
             snapshot_revision?: number;
@@ -273,15 +273,18 @@ export interface components {
             approved_at: components["schemas"]["Time"];
             audit_id: components["schemas"]["Id"];
         };
+        /** @description A blocked run includes reason and audit_id and has no device outcomes. */
         Run: {
             run_id: components["schemas"]["Id"];
             plan_id: components["schemas"]["Id"];
             revision: number;
             wave_number: number;
+            /** @description Applied snapshot checked at reservation or by the worker's later start decision. */
             snapshot_revision: number;
             /** @enum {unknown} */
-            state: "queued" | "running" | "succeeded" | "paused" | "partial_failure" | "rolled_back" | "failed";
+            state: "queued" | "blocked" | "running" | "succeeded" | "paused" | "partial_failure" | "rolled_back" | "failed";
             reason?: components["schemas"]["Reason"];
+            audit_id?: components["schemas"]["Id"];
             devices: {
                 asset_id: components["schemas"]["Id"];
                 /** @enum {unknown} */
@@ -876,6 +879,19 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "run_id": "run-001",
+                     *       "plan_id": "dispatch",
+                     *       "revision": 1,
+                     *       "wave_number": 1,
+                     *       "snapshot_revision": 2,
+                     *       "state": "blocked",
+                     *       "reason": "alternate_path_unavailable",
+                     *       "audit_id": "audit-002",
+                     *       "devices": []
+                     *     }
+                     */
                     "application/json": components["schemas"]["Run"];
                 };
             };
