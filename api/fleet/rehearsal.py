@@ -168,6 +168,22 @@ def wave_at(document, number):
     return document["waves"][number - 1]
 
 
+def pending_evidence(db, scope, graph=None, wave=None):
+    rows = db.execute(
+        """SELECT asset_id FROM observation_watermarks
+           WHERE (tenant_id,site_id)=(%s,%s) AND source_id='synthetic-health' AND accepted>applied""", scope,
+    ).fetchall()
+    if not rows or graph is None:
+        return bool(rows)
+    relevant = set(graph["services"].values())
+    while True:
+        expanded = relevant | {node for link in graph["links"] if relevant.intersection(link) for node in link}
+        if expanded == relevant:
+            break
+        relevant = expanded
+    return bool((relevant | set(wave["device_ids"])).intersection(row["asset_id"] for row in rows))
+
+
 def guard_reason(db, scope, state, document, number):
     plan, revision = document["plan_id"], document["revision"]
     wave = wave_at(document, number)
@@ -178,6 +194,8 @@ def guard_reason(db, scope, state, document, number):
         return "policy_changed"
     if not datetime.fromisoformat(wave["starts_at"]) <= now < datetime.fromisoformat(wave["ends_at"]):
         return "outside_window"
+    if pending_evidence(db, scope, state["graph"], wave):
+        return "pending_evidence"
     previous = db.execute(
         """SELECT wave_number,devices FROM rehearsal_runs
            WHERE (tenant_id,site_id,plan_id,revision)=(%s,%s,%s,%s) AND state='succeeded'""",
