@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Fleet Rehearsal API
-  version: 0.2.0-draft
-  description: Inventory and demo identity routes are live. Operations marked planned are contracts for the synthetic simulator.
+  version: 0.2.0
+  description: Inventory and synthetic rehearsal operations.
 servers:
   - url: /api
 security: []
@@ -19,6 +19,8 @@ paths:
     $ref: './openapi.json#/paths/~1v1~1assets~1{asset_id}'
   /v1/tenants/{tenant_id}/sites/{site_id}/inventory/import:
     $ref: './openapi.json#/paths/~1v1~1tenants~1{tenant_id}~1sites~1{site_id}~1inventory~1import'
+  /v1/tenants/{tenant_id}/sites/{site_id}/rehearsal/context:
+    $ref: './openapi.json#/paths/~1v1~1tenants~1{tenant_id}~1sites~1{site_id}~1rehearsal~1context'
   /v1/tenants/{tenant_id}/sites/{site_id}/plans/{plan_id}/revisions:
     parameters:
       - $ref: '#/components/parameters/Tenant'
@@ -28,7 +30,6 @@ paths:
       operationId: previewPlan
       security: [{HTTPBearer: []}]
       summary: Generate and save a plan preview
-      x-implementation-status: planned
       description: Requires a partner proposer grant. The server takes the latest applied snapshot and active site policy. Supply base_revision 0 only for a new plan. A saved revision may have no schedulable waves.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -78,7 +79,6 @@ paths:
       operationId: readPlanRevision
       security: [{HTTPBearer: []}]
       summary: Read a saved plan revision and its approval
-      x-implementation-status: planned
       responses:
         '200':
           description: Plan revision and current approval, if any
@@ -101,7 +101,6 @@ paths:
       operationId: approvePlanRevision
       security: [{HTTPBearer: []}]
       summary: Approve the exact current revision
-      x-implementation-status: planned
       description: Requires an assigned customer approver different from the proposer. A superseded revision or fingerprint mismatch is a stale_revision conflict.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -131,7 +130,6 @@ paths:
       operationId: startRehearsal
       security: [{HTTPBearer: []}]
       summary: Revalidate and reserve one simulated wave
-      x-implementation-status: planned
       description: Requires a site operator, the exact approval, and fresh applied evidence. A block before reservation commits audit evidence without creating a run. A later block is visible on the queued run.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -184,7 +182,6 @@ paths:
       operationId: readRehearsal
       security: [{HTTPBearer: []}]
       summary: Read simulated run status and device outcomes
-      x-implementation-status: planned
       responses:
         '200':
           description: Current run status
@@ -213,7 +210,6 @@ paths:
       operationId: listSiteAudit
       security: [{HTTPBearer: []}]
       summary: Read the site's audit timeline
-      x-implementation-status: planned
       description: Returns events in ascending append order. Repeat the same scoped query using next_cursor as after until it is null.
       parameters:
         - name: after
@@ -373,6 +369,7 @@ components:
         snapshot_revision: {type: integer, minimum: 1}
         policy_revision: {type: integer, minimum: 1}
         fingerprint: {$ref: '#/components/schemas/Fingerprint'}
+        protected_services: {type: array, items: {$ref: '#/components/schemas/Id'}}
         waves: {type: array, items: {$ref: '#/components/schemas/Wave'}}
         deferred:
           type: array

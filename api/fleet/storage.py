@@ -4,7 +4,10 @@ from psycopg import Connection
 from psycopg.types.json import Jsonb
 
 
-MIGRATIONS = ("001_inventory.sql", "002_raw_evidence.sql", "003_site_roles.sql", "004_inventory_revision.sql")
+MIGRATIONS = (
+    "001_inventory.sql", "002_raw_evidence.sql", "003_site_roles.sql",
+    "004_inventory_revision.sql", "005_rehearsal.sql",
+)
 EVIDENCE_FIELDS = ("running_release", "release_status", "trunk_port", "trustsec", "macsec", "observed_at")
 INVENTORY_PAGE_SQL = """WITH visible AS MATERIALIZED (
     SELECT e.* FROM inventory_evidence e

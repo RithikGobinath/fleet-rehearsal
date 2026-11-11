@@ -12,6 +12,7 @@ import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Subscription } from 'rxjs';
 import type { components } from './api.generated';
 import { inventoryFixtureMode } from './inventory-http';
+import { RehearsalPanel } from './rehearsal-panel';
 
 type Schemas = components['schemas'];
 type PrincipalTenant = Schemas['Tenant'];
@@ -25,7 +26,7 @@ type AssetsResponse = Schemas['InventoryPage'];
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, RehearsalPanel],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="app-container">
@@ -84,6 +85,16 @@ type AssetsResponse = Schemas['InventoryPage'];
           </div>
         </div>
       </header>
+
+      @if (!fixtureMode) {
+        <nav aria-label="Rehearsal navigation">
+          <button class="btn btn-secondary" type="button" [attr.aria-expanded]="showRehearsal()"
+            (click)="showRehearsal.update(togglePanel)">Rehearsal</button>
+        </nav>
+        @if (showRehearsal()) {
+          <rehearsal-panel [token]="bearerToken()" [tenant]="activeTenantId()" />
+        }
+      }
 
       <!-- Main Workspace -->
       <main class="console-main" id="main-content">
@@ -448,6 +459,8 @@ type AssetsResponse = Schemas['InventoryPage'];
 export class App implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient);
   protected readonly fixtureMode = inventoryFixtureMode;
+  protected readonly showRehearsal = signal(false);
+  protected readonly togglePanel = (open: boolean) => !open;
 
   // Sequence guards to prevent late responses from race conditions
   private identitySequence = 0;
@@ -465,7 +478,7 @@ export class App implements OnInit, OnDestroy {
   readonly activeTenantId = signal<string>('');
 
   // Bearer token strictly stored only in component state (not in storage)
-  private readonly bearerToken = signal<string | null>(null);
+  protected readonly bearerToken = signal<string | null>(null);
 
   readonly findingFilter = signal<string>('');
   readonly assets = signal<Asset[]>([]);
