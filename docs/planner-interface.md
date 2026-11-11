@@ -2,6 +2,8 @@
 
 `plan_waves(snapshot, policy, at)` and `validate_wave(snapshot, wave, at)` are pure functions over JSON values. They use the supplied evaluation time, without I/O or a system clock. Inputs use UTC; intervals are half-open `[starts_at, ends_at)`.
 
+`normalize_snapshot(snapshot)` returns a canonical copy with sorted device and service IDs, deduplicated undirected links and uplinks, and UTC timestamps. Missing or malformed device evidence becomes null and stays unusable. Invalid topology, including an endpoint outside the site graph, raises `ValueError`.
+
 | Input | Fields |
 | --- | --- |
 | Snapshot | `site_id`, positive `revision` and `max_age_seconds`, `devices` keyed by ID with `healthy`, `observed_at`, optional `redundancy_group`; undirected `links` as ID pairs, `uplinks` as IDs, and `services` mapping protected service IDs to attachment IDs. The caller supplies a single tenant's site. |

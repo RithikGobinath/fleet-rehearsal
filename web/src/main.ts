@@ -1,5 +1,5 @@
-import { provideHttpClient } from '@angular/common/http';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { App } from './app';
+import { inventoryHttp } from './inventory-http';
 
-bootstrapApplication(App, { providers: [provideHttpClient()] }).catch(console.error);
+bootstrapApplication(App, { providers: [inventoryHttp] }).catch(console.error);

@@ -16,6 +16,8 @@ From the repository directory with Docker Compose available, run `docker compose
 
 The Compose configuration uses Python 3.12 and Node.js 24 and installs dependencies from `api/requirements.lock` and `web/package-lock.json`. Its only published port binds to loopback. Demo identities grant access to synthetic data and the API requires explicit local mode. [Architecture and trust boundaries](docs/architecture.md)
 
+For Angular work without Docker, run `npm ci --prefix web` and `npm run dev:fixtures --prefix web`, then open [the local fixture console](http://127.0.0.1:4200). It shows a **Local fixtures** badge and uses browser-only sample responses. The normal build calls FastAPI.
+
 ## Project plan
 
 - [GitHub build map](docs/build-map.md) contains the flowcharts, dependencies, model assignments, and acceptance checks.
