@@ -18,6 +18,7 @@ from fleet.storage import INVENTORY_PAGE_SQL, initialize_inventory
 
 ADVISORY_URL = "https://www.cisco.com/c/en/us/support/docs/csa/cisco-sa-cat9k-PtmD7bgy.html"
 Finding = Literal["affected", "unaffected", "needs_evidence"]
+SiteRole = Literal["viewer", "partner_proposer", "customer_approver", "operator"]
 ID_PATTERN = r"^[a-z0-9][a-z0-9-]{0,63}$"
 TenantId = Annotated[str, Query(pattern=ID_PATTERN)]
 AssetId = Annotated[str, PathParam(pattern=ID_PATTERN)]
@@ -118,6 +119,18 @@ def require_tenant(db: psycopg.Connection, caller: str, tenant: str) -> None:
     ).fetchone()
     if grant is None:
         raise HTTPException(403, "This identity does not have access to that customer.")
+
+
+def require_site_role(db: psycopg.Connection, caller: str, tenant: str, site: str, role: SiteRole) -> None:
+    require_tenant(db, caller, tenant)
+    grant = db.execute(
+        "SELECT role FROM grants WHERE principal_id = %s AND tenant_id = %s AND site_id = %s",
+        (caller, tenant, site),
+    ).fetchone()
+    if grant is None:
+        raise HTTPException(404, "Site not found in granted scope.")
+    if grant["role"] != role:
+        raise HTTPException(403, "This identity cannot perform that action.")
 
 
 @app.get("/healthz")

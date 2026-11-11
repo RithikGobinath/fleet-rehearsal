@@ -4,8 +4,11 @@ import unittest
 from pathlib import Path
 
 import psycopg
+from fastapi import HTTPException
 from psycopg.errors import ForeignKeyViolation
+from psycopg.rows import dict_row
 
+from fleet.main import require_site_role
 from fleet.storage import INVENTORY_PAGE_SQL, initialize_inventory
 
 
@@ -36,7 +39,7 @@ class StorageTests(unittest.TestCase):
             initialize_inventory(conn, SEED)
             assets, versions = read_state()
             self.assertEqual(len(assets), 5)
-            self.assertEqual([row[0] for row in versions], [1, 2])
+            self.assertEqual([row[0] for row in versions], [1, 2, 3])
             self.assertEqual(assets[0][2], "Existing device")
             self.assertIsNone(assets[0][3]["trustsec"])
             self.assertIsNone(assets[2][3]["trunk_port"])
@@ -51,6 +54,14 @@ class StorageTests(unittest.TestCase):
                     tenant_id, id, site_id, name, product, running_release, release_status, observed_at, raw_evidence
                 ) VALUES ('summit', 'cross-tenant-test', 'harbor', 'Invalid', 'Catalyst 9300',
                     'lab-fixed', 'unaffected', '2026-11-10T18:00:00Z', '{}')""")
+
+    def test_approval_requires_an_approver_at_that_site(self):
+        with psycopg.connect(os.environ["DATABASE_URL"], row_factory=dict_row) as conn:
+            require_site_role(conn, "demo-approver", "northstar", "harbor", "customer_approver")
+            for caller, site, status in (("demo-partner", "harbor", 403), ("demo-approver", "river", 404)):
+                with self.subTest(caller=caller, site=site), self.assertRaises(HTTPException) as denied:
+                    require_site_role(conn, caller, "northstar", site, "customer_approver")
+                self.assertEqual(denied.exception.status_code, status)
 
     def test_scoped_inventory_uses_an_index_with_many_ungranted_sites(self):
         with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.transaction(force_rollback=True):

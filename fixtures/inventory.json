@@ -1,10 +1,11 @@
 {
   "tenants": [["northstar", "Northstar"], ["summit", "Summit"]],
   "sites": [["northstar", "harbor", "Harbor"], ["northstar", "river", "River"], ["summit", "ridge", "Ridge"]],
-  "principals": [["demo-northstar", "Northstar operator"], ["demo-summit", "Summit operator"], ["demo-partner", "Partner · Harbor"]],
+  "principals": [["demo-northstar", "Northstar operator"], ["demo-summit", "Summit operator"], ["demo-partner", "Partner · Harbor"], ["demo-approver", "Northstar approver"]],
   "grants": [
-    ["demo-northstar", "northstar", "harbor"], ["demo-northstar", "northstar", "river"],
-    ["demo-summit", "summit", "ridge"], ["demo-partner", "northstar", "harbor"]
+    ["demo-northstar", "northstar", "harbor", "operator"], ["demo-northstar", "northstar", "river", "operator"],
+    ["demo-summit", "summit", "ridge", "operator"], ["demo-partner", "northstar", "harbor", "partner_proposer"],
+    ["demo-approver", "northstar", "harbor", "customer_approver"]
   ],
   "assets": [
     ["northstar", "harbor-01", "harbor", "Harbor access switch 01", "Catalyst 9300", "lab-affected", "affected", true, false, false, "2026-11-10T18:00:00Z"],

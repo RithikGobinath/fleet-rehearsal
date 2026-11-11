@@ -4,7 +4,7 @@ from psycopg import Connection
 from psycopg.types.json import Jsonb
 
 
-MIGRATIONS = ("001_inventory.sql", "002_raw_evidence.sql")
+MIGRATIONS = ("001_inventory.sql", "002_raw_evidence.sql", "003_site_roles.sql")
 EVIDENCE_FIELDS = ("running_release", "release_status", "trunk_port", "trustsec", "macsec", "observed_at")
 INVENTORY_PAGE_SQL = """WITH visible AS MATERIALIZED (
     SELECT e.* FROM inventory_evidence e
@@ -43,7 +43,7 @@ def initialize_inventory(conn: Connection, seed: dict) -> None:
             "INSERT INTO principals (id, label) VALUES (%s, %s) ON CONFLICT DO NOTHING", seed["principals"],
         )
         cur.executemany(
-            "INSERT INTO grants (principal_id, tenant_id, site_id) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
+            "INSERT INTO grants (principal_id, tenant_id, site_id, role) VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING",
             seed["grants"],
         )
         cur.executemany(
