@@ -8,10 +8,12 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 import psycopg
-from fastapi import Depends, FastAPI, HTTPException, Path as PathParam, Query
+from fastapi import Depends, FastAPI, HTTPException, Path as PathParam, Query, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
+
+from fleet.settings import LocalSettings
 
 
 ADVISORY_URL = "https://www.cisco.com/c/en/us/support/docs/csa/cisco-sa-cat9k-PtmD7bgy.html"
@@ -69,8 +71,9 @@ class InventoryPage(BaseModel):
     total: int
 
 
-def get_db():
-    with psycopg.connect(os.environ["DATABASE_URL"], row_factory=dict_row) as conn:
+def get_db(request: Request):
+    settings: LocalSettings = request.app.state.settings
+    with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
         yield conn
 
 
@@ -78,12 +81,10 @@ Database = Annotated[psycopg.Connection, Depends(get_db)]
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI):
-    if os.environ.get("FLEET_DEMO_MODE") != "local":
-        raise RuntimeError("Set FLEET_DEMO_MODE=local for the synthetic demo.")
-    seed_path = Path(os.environ.get("FLEET_FIXTURE", "fixtures/inventory.json"))
-    seed = json.loads(seed_path.read_text(encoding="utf-8"))
-    with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
+async def lifespan(app: FastAPI):
+    settings = LocalSettings.from_env(os.environ)
+    seed = json.loads(settings.fixture_path.read_text(encoding="utf-8"))
+    with psycopg.connect(settings.database_url) as conn, conn.cursor() as cur:
         cur.execute("SELECT pg_advisory_xact_lock(812670)")
         cur.execute(Path(__file__).with_name("schema.sql").read_text(encoding="utf-8"))
         cur.executemany("INSERT INTO tenants (id, label) VALUES (%s, %s) ON CONFLICT DO NOTHING", seed["tenants"])
@@ -107,6 +108,7 @@ async def lifespan(_app: FastAPI):
             ON CONFLICT DO NOTHING""",
             seed["assets"],
         )
+    app.state.settings = settings
     yield
 
 
