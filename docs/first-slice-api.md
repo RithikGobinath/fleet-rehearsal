@@ -34,6 +34,8 @@ Each `Asset` contains the following fields.
 
 Finding values are `affected`, `unaffected`, and `needs_evidence`. The release labels are synthetic. Use `next_cursor` as `after` to fetch the next page. `total` counts the authorized rows matching the current filter before pagination.
 
+Operators can POST a JSON `{ "rows": [...] }` batch to `/v1/tenants/{tenant_id}/sites/{site_id}/inventory/import`. The route accepts at most 250 synthetic rows and 128 KiB. Supply a positive source revision and UTC observation time for each row. The entire batch commits or rolls back. An unchanged row at the same revision is a safe repeat; a stale or conflicting revision, duplicate ID in a batch, or asset outside the granted site cannot overwrite data. Rejections identify the one-based row where possible without echoing its values.
+
 ## Rehearsal contract draft
 
 [OpenAPI YAML](../contracts/openapi.yaml) references the live [inventory description](../contracts/openapi.json). The six operations marked `planned` in the YAML are preview, revision read, approval, rehearsal start, run status, and audit. They are specifications for the synthetic simulator. Validate from the repository root with `npx --yes @redocly/cli@2.58.2 lint --config contracts/redocly.yaml contracts/openapi.yaml`.

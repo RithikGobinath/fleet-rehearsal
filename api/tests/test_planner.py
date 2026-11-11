@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from fleet.planner import normalize_snapshot, plan_waves, validate_wave  # noqa: E402
+from fleet.planner import normalize_snapshot, plan_waves, validate_wave, validate_wave_policy  # noqa: E402
 
 AT = "2026-11-10T18:00:00Z"
 FRESH = "2026-11-10T17:55:00Z"
@@ -294,6 +294,29 @@ class SnapshotTests(unittest.TestCase):
 
 
 class PlanWavesTests(unittest.TestCase):
+    def test_policy_guard_rejects_blackout_canary_and_manual_review(self):
+        rules = policy(candidate("dist-a"), candidate("dist-b"), canary_id="dist-a", duration_seconds=3600)
+        first = wave("dist-a")
+        second = wave("dist-b")
+        self.assertIsNone(validate_wave_policy(rules, first, set()))
+        self.assertEqual(validate_wave_policy(rules, second, set()), "prerequisite_incomplete")
+        self.assertIsNone(validate_wave_policy(rules, second, {"dist-a"}))
+        rules["blackouts"] = [{"starts_at": "2026-11-10T20:30:00Z", "ends_at": "2026-11-10T21:00:00Z"}]
+        self.assertEqual(validate_wave_policy(rules, first, set()), "outside_window")
+        rules["blackouts"] = []
+        rules["candidates"][0]["manual_review"] = True
+        self.assertEqual(validate_wave_policy(rules, first, set()), "not_eligible")
+        self.assertEqual(plan_waves(redundant_site(), rules, AT)["waves"], [])
+
+    def test_fall_back_requires_offset_and_preserves_both_instants(self):
+        rules = policy(candidate("dist-a"), duration_seconds=3600, windows=[{
+            "starts_at": "2026-11-01T01:30:00-04:00", "ends_at": "2026-11-01T01:30:00-05:00",
+        }])
+        first = wave("dist-a", starts_at="2026-11-01T05:30:00Z", ends_at="2026-11-01T06:30:00Z")
+        self.assertIsNone(validate_wave_policy(rules, first, set()))
+        rules["windows"][0]["starts_at"] = "2026-11-01T01:30:00"
+        self.assertEqual(validate_wave_policy(rules, first, set()), "invalid_configuration")
+
     def test_orders_by_deadline_criticality_and_id_with_canary_first(self):
         rules = policy(
             candidate("c"),

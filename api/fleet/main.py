@@ -12,6 +12,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 
+from fleet.inventory_import import IMPORT_SCHEMA, InventoryBatch, read_inventory_import, store_inventory_import
 from fleet.settings import LocalSettings
 from fleet.storage import INVENTORY_PAGE_SQL, initialize_inventory
 
@@ -131,6 +132,26 @@ def require_site_role(db: psycopg.Connection, caller: str, tenant: str, site: st
         raise HTTPException(404, "Site not found in granted scope.")
     if grant["role"] != role:
         raise HTTPException(403, "This identity cannot perform that action.")
+
+
+@app.post(
+    "/v1/tenants/{tenant_id}/sites/{site_id}/inventory/import",
+    operation_id="importInventory",
+    openapi_extra={"requestBody": {"required": True, "content": {"application/json": {"schema": IMPORT_SCHEMA}}}},
+    responses={code: {"description": detail} for code, detail in {
+        401: "Invalid session", 403: "Operator role required", 404: "Site not found in granted scope",
+        409: "Batch rejected without changes; row conflicts", 413: "Batch too large", 415: "JSON required",
+    }.items()},
+)
+def import_inventory(
+    tenant_id: AssetId,
+    site_id: AssetId,
+    db: Database,
+    caller: Caller,
+    batch: Annotated[InventoryBatch, Depends(read_inventory_import)],
+) -> dict[str, int]:
+    require_site_role(db, caller, tenant_id, site_id, "operator")
+    return {"accepted": store_inventory_import(db, tenant_id, site_id, batch)}
 
 
 @app.get("/healthz")

@@ -4,6 +4,8 @@ import unittest
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+import psycopg
+
 
 BASE_URL = os.environ.get("FLEET_TEST_URL", "http://127.0.0.1:8000")
 
@@ -83,6 +85,32 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(first["total"], 4)
         self.assertIsNone(second["next_cursor"])
         self.assertEqual([row["id"] for row in first["items"] + second["items"]], ["harbor-01", "harbor-02", "harbor-03", "river-01"])
+
+    def test_import_is_scoped_atomic_and_repeatable(self):
+        path = "/v1/tenants/northstar/sites/harbor/inventory/import"
+        token = self.tokens["demo-northstar"]
+        detail = "/v1/assets/fr21-test?tenant_id=northstar"
+        row = {"id": "fr21-test", "name": "Synthetic import", "product": "Catalyst 9300",
+               "running_release": "lab-affected", "release_status": "affected", "observed_at": "2026-11-10T18:00:00Z",
+               "source_revision": 1}
+        try:
+            self.assertEqual(request(path, token=self.tokens["demo-partner"], payload={"rows": [row]})[0], 403)
+            bad = dict(row, id="fr21-malformed", trunk_port="private-value")
+            status, body = request(path, token=token, payload={"rows": [row, bad]})
+            self.assertEqual((status, body), (422, {"detail": {"code": "invalid_inventory", "row": 2}}))
+            self.assertEqual(request(detail, token=token)[0], 404)
+            conflict = dict(row, id="river-01", source_revision=2)
+            status, body = request(path, token=token, payload={"rows": [row, conflict]})
+            self.assertEqual((status, body), (409, {"detail": {"code": "inventory_conflict", "row": 2}}))
+            self.assertEqual(request(detail, token=token)[0], 404)
+            self.assertEqual(request(path, token=token, payload={"rows": [row]}), (200, {"accepted": 1}))
+            self.assertEqual(request(path, token=token, payload={"rows": [row]}), (200, {"accepted": 1}))
+            self.assertEqual(request(detail, token=token)[1]["finding"], "needs_evidence")
+            self.assertEqual(request(path, token=token, payload={"rows": [dict(row, name="x" * 132_000)]})[0], 413)
+        finally:
+            with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+                conn.execute("DELETE FROM assets WHERE tenant_id = %s AND site_id = %s AND id = %s",
+                             ("northstar", "harbor", "fr21-test"))
 
 
 if __name__ == "__main__":
