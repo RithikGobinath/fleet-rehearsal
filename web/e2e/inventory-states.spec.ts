@@ -36,7 +36,7 @@ test('inventory shows loading, empty, error, and recovered evidence states', asy
   await page.getByRole('button', { name: 'Retry failed request' }).click();
   const table = page.getByRole('table', { name: 'Device inventory list' });
   for (const label of ['Affected', 'Unaffected', 'Needs Evidence']) {
-    await expect(table.getByText(label, { exact: true }).first()).toBeVisible();
+    await expect(table.getByRole('cell', { name: `Finding status: ${label}`, exact: true }).first()).toBeVisible();
   }
   await expect(page.getByRole('alert')).toHaveCount(0);
   await screenshot('recovered');
