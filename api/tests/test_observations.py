@@ -4,6 +4,8 @@ import time
 import unittest
 from pathlib import Path
 from uuid import uuid4
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
 from psycopg.types.json import Jsonb
 
@@ -64,7 +66,25 @@ class ObservationTests(unittest.TestCase):
         context_url = self.path + "/rehearsal/context"
         self.assertTrue(api.call(context_url, self.operator)[1]["pending"])
         start = plan_path + "/1/waves/1/runs"
-        self.assertEqual(api.call(start, self.operator, body)[1]["code"], "pending_evidence")
+        request = Request(api.BASE + start, data=json.dumps(body).encode(), headers={
+            "Authorization": f"Bearer {self.operator}", "Content-Type": "application/json",
+            "Idempotency-Key": uuid4().hex,
+        })
+        with self.assertRaises(HTTPError) as blocked:
+            urlopen(request, timeout=5)
+        with blocked.exception as response:
+            self.assertEqual(response.code, 409)
+            correlation = response.headers["X-Request-ID"]
+            decision = json.load(response)
+        self.assertEqual(decision["code"], "pending_evidence")
+        audit = api.call(self.path + "/audit", self.operator)[1]["items"]
+        self.assertEqual(next(item["correlation_id"] for item in audit if item["audit_id"] == decision["audit_id"]),
+                         correlation)
+        with urlopen(api.BASE + "/metrics", timeout=5) as response:
+            metrics = response.read().decode()
+        self.assertRegex(metrics, r"fleet_observations_unapplied [1-9]\d*")
+        self.assertRegex(metrics, r'fleet_rehearsal_blocked_total\{reason="pending_evidence"\} [1-9]\d*')
+        self.assertNotIn(self.tenant, metrics)
 
         delivered = []
 

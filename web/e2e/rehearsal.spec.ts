@@ -87,6 +87,7 @@ test('approves and rehearses a canary, then blocks a separate approved wave afte
     await page.keyboard.press('Enter');
     const blockedAlert = page.getByRole('alert').filter({ hasText: 'alternate_path_unavailable' });
     await expect(blockedAlert).toBeFocused();
+    expect(await blockedAlert.textContent()).toMatch(/Audit audit-\d+/);
     await expect(page.locator('time[datetime="2026-11-10T19:00:00Z"]')).toBeVisible();
     await expect(page.getByRole('heading', { name: /^Run run-/ })).toHaveCount(0);
     await page.getByRole('button', { name: 'Load audit' }).click();

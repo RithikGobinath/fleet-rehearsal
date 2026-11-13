@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from fleet.main import app
 from test_rehearsal import call, connect
 
+
 class HostedBoundaryTests(unittest.TestCase):
     def test_hosted_verifies_tokens_and_current_database_grants(self):
         subject = "auth0|" + uuid4().hex
@@ -59,6 +60,9 @@ class HostedBoundaryTests(unittest.TestCase):
             denied = client.post("/v1/tenants/northstar/sites/harbor/plans/dispatch/revisions/1/approval",
                 headers={**authorized, "Idempotency-Key": uuid4().hex}, json={"expected_fingerprint": "a" * 64})
             self.assertEqual(denied.status_code, 403)
+            denied_start = client.post("/v1/tenants/northstar/sites/harbor/plans/dispatch/revisions/1/waves/1/runs",
+                headers={**authorized, "Idempotency-Key": uuid4().hex}, json={"expected_fingerprint": "a" * 64})
+            self.assertEqual(denied_start.status_code, 403)
             with connect() as db:
                 db.execute("DELETE FROM hosted_identities WHERE (issuer,subject)=(%s,%s)", (issuer, subject))
             self.assertEqual(client.get("/v1/auth/profile", headers=authorized).status_code, 401)
