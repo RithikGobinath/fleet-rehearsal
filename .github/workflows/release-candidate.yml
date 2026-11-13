@@ -1,0 +1,156 @@
+name: Release candidate checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Validate OpenAPI and generated client
+        run: |
+          npm ci --prefix web
+          npx --yes @redocly/cli@2.58.2 lint --config contracts/redocly.yaml contracts/openapi.yaml
+          npm run types:api --prefix web -- --check
+      - name: Build and start the inventory and Kafka stack
+        run: docker compose --profile events up --build --wait kafka api web
+      - name: Verify API, migrations, authorization, worker and real Kafka recovery
+        run: |
+          set -euo pipefail
+          docker compose exec -T api python -m unittest discover -s tests -v
+          docker compose exec -T -e FLEET_KAFKA_BOOTSTRAP=kafka:9092 api python -m unittest discover -s tests -p test_observations.py -k real_broker -v
+      - name: Run live Chromium and offline fixture journeys
+        working-directory: web
+        run: |
+          npx playwright install --with-deps chromium
+          FLEET_E2E_EVENTS=1 npm run test:e2e
+          FLEET_EXPECT_FIXTURES=1 npm run test:e2e -- inventory.spec.ts --output test-results-fixtures
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: browser-evidence
+          path: |
+            web/test-results
+            web/test-results-fixtures
+          if-no-files-found: ignore
+      - name: Print service logs on failure
+        if: failure()
+        run: docker compose --profile events logs --no-color
+      - name: Stop the disposable stack
+        if: always()
+        run: docker compose --profile events down -v
+  security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+      - name: Scan committed secrets
+        run: |
+          curl -fsSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz -o /tmp/gitleaks.tar.gz
+          echo '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          mkdir -p reports
+          /tmp/gitleaks git --redact --report-format json --report-path reports/secrets.json
+      - name: Scan locked npm dependencies
+        working-directory: web
+        run: npm audit --audit-level=high --json > ../reports/npm-audit.json
+      - name: Build and scan release images
+        run: |
+          docker build --target runtime -f api/Dockerfile -t fleet-api:scan .
+          docker build -f web/Dockerfile -t fleet-web:scan .
+          bash scripts/scan-image.sh fleet-api:scan reports/api.json
+          bash scripts/scan-image.sh fleet-web:scan reports/web.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: security-evidence
+          path: reports
+          if-no-files-found: error
+  deployment:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
+        with:
+          terraform_version: 1.14.7
+      - name: Validate infrastructure with the backend disabled
+        run: |
+          terraform -chdir=infra/staging fmt -check
+          terraform -chdir=infra/staging init -backend=false -lockfile=readonly
+          terraform -chdir=infra/staging validate
+          python3 scripts/test-render-release.py
+      - name: Start a local Kubernetes test cluster
+        run: |
+          curl -fsSL https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64 -o /tmp/kind
+          echo 'aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d  /tmp/kind' | sha256sum -c -
+          chmod +x /tmp/kind
+          /tmp/kind create cluster --image kindest/node:v1.35.8@sha256:07b2536e30b803ed61d1677a79df6115f798ce64c80f9e22f6ed45afd09323c0 --wait 120s
+      - name: Verify workloads and a Kafka restart
+        run: |
+          docker build --target runtime -f api/Dockerfile -t fleet-api:smoke .
+          docker build -f web/Dockerfile -t fleet-web:smoke .
+          /tmp/kind load docker-image fleet-api:smoke fleet-web:smoke
+          kubectl apply -k deploy/smoke
+          for app in postgres api web worker observations; do
+            kubectl -n fleet rollout status "deployment/$app" --timeout=240s
+          done
+          kubectl -n fleet rollout status statefulset/kafka --timeout=240s
+          kubectl -n fleet exec deployment/web -- wget -qO- http://127.0.0.1:8080/api/healthz
+          kubectl -n fleet exec deployment/api -- python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/metrics').read()"
+          kubectl -n fleet delete pod kafka-0
+          kubectl -n fleet rollout status statefulset/kafka --timeout=240s
+          kubectl -n fleet exec statefulset/kafka -- /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list | grep -Fx fleet-observations-v1
+      - name: Report cluster diagnostics
+        if: failure()
+        run: |
+          kubectl -n fleet get pods,pvc -o wide || true
+          kubectl -n fleet get events --sort-by=.lastTimestamp || true
+          kubectl -n fleet logs -l app=fleet-kafka --tail=80 || true
+      - name: Stop the local cluster
+        if: always()
+        run: |
+          if [ -x /tmp/kind ]; then /tmp/kind delete cluster; fi
+  aggregate:
+    name: Fleet release gate
+    if: always()
+    needs: [inventory, security, deployment]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Require every job to pass
+        env:
+          INVENTORY: ${{ needs.inventory.result }}
+          SECURITY: ${{ needs.security.result }}
+          DEPLOYMENT: ${{ needs.deployment.result }}
+        run: |
+          if bash scripts/release-gate.sh success skipped success; then exit 1; fi
+          if bash scripts/release-gate.sh success failure success; then exit 1; fi
+          bash scripts/release-gate.sh "$INVENTORY" "$SECURITY" "$DEPLOYMENT"
