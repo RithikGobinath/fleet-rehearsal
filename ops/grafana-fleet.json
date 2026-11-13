@@ -1,0 +1,19 @@
+{
+  "title": "Fleet Rehearsal",
+  "uid": "fleet-rehearsal",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": {"from": "now-15m", "to": "now"},
+  "panels": [
+    {"id": 1, "type": "timeseries", "title": "Observations waiting", "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+     "targets": [{"refId": "A", "expr": "fleet_observations_unpublished"}, {"refId": "B", "expr": "fleet_observations_unapplied"}]},
+    {"id": 2, "type": "timeseries", "title": "Oldest unapplied observation and worker heartbeat age", "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+     "targets": [{"refId": "A", "expr": "fleet_observations_oldest_unapplied_seconds"}, {"refId": "B", "expr": "fleet_worker_heartbeat_age_seconds"}]},
+    {"id": 3, "type": "timeseries", "title": "Blocked rehearsal starts and failed verifications", "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+     "targets": [{"refId": "A", "expr": "increase(fleet_rehearsal_blocked_total[5m])"}, {"refId": "B", "expr": "increase(fleet_rehearsal_failed_verifications_total[5m])"}]},
+    {"id": 4, "type": "timeseries", "title": "Mean HTTP duration by outcome", "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+     "targets": [{"refId": "A", "expr": "rate(fleet_http_request_duration_seconds_sum[5m]) / rate(fleet_http_request_duration_seconds_count[5m])"}]},
+    {"id": 5, "type": "timeseries", "title": "Sites with stale observations", "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+     "targets": [{"refId": "A", "expr": "fleet_evidence_stale_sites"}]}
+  ]
+}

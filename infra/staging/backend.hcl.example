@@ -1,0 +1,3 @@
+bucket = "replace-with-approved-private-state-bucket"
+key    = "fleet-rehearsal/staging/terraform.tfstate"
+region = "us-east-1"

@@ -82,6 +82,56 @@
         "title": "Asset",
         "type": "object"
       },
+      "AuthConfig": {
+        "properties": {
+          "audience": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audience"
+          },
+          "client_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Id"
+          },
+          "issuer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer"
+          },
+          "mode": {
+            "enum": [
+              "local",
+              "hosted"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "AuthConfig",
+        "type": "object"
+      },
       "FingerprintRequest": {
         "additionalProperties": false,
         "properties": {
@@ -601,6 +651,47 @@
           }
         ],
         "summary": "Evidence"
+      }
+    },
+    "/v1/auth/config": {
+      "get": {
+        "operationId": "authConfig",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthConfig"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Auth Config"
+      }
+    },
+    "/v1/auth/profile": {
+      "get": {
+        "operationId": "authProfile",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Principal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Auth Profile"
       }
     },
     "/v1/demo/principals": {

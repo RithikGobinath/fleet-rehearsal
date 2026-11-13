@@ -9,6 +9,10 @@ security: []
 paths:
   /healthz:
     $ref: './openapi.json#/paths/~1healthz'
+  /v1/auth/config:
+    $ref: './openapi.json#/paths/~1v1~1auth~1config'
+  /v1/auth/profile:
+    $ref: './openapi.json#/paths/~1v1~1auth~1profile'
   /v1/demo/principals:
     $ref: './openapi.json#/paths/~1v1~1demo~1principals'
   /v1/demo/session:

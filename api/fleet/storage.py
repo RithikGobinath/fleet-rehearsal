@@ -7,6 +7,8 @@ from psycopg.types.json import Jsonb
 MIGRATIONS = (
     "001_inventory.sql", "002_raw_evidence.sql", "003_site_roles.sql",
     "004_inventory_revision.sql", "005_rehearsal.sql", "006_observations.sql",
+    "007_hosted_identity.sql",
+    "008_worker_heartbeat.sql",
 )
 EVIDENCE_FIELDS = ("running_release", "release_status", "trunk_port", "trustsec", "macsec", "observed_at")
 INVENTORY_PAGE_SQL = """WITH visible AS MATERIALIZED (
@@ -57,3 +59,8 @@ def initialize_inventory(conn: Connection, seed: dict) -> None:
             ON CONFLICT DO NOTHING""",
             [(*row, Jsonb(dict(zip(EVIDENCE_FIELDS, row[5:], strict=True)))) for row in seed["assets"]],
         )
+
+
+def worker_heartbeat(db: Connection, worker: str) -> None:
+    db.execute("""INSERT INTO worker_heartbeats VALUES (%s, clock_timestamp())
+                  ON CONFLICT (worker) DO UPDATE SET last_seen=EXCLUDED.last_seen""", (worker,))

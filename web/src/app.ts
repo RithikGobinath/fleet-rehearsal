@@ -10,6 +10,8 @@ import {
 import { CommonModule } from '@angular/common';
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Subscription } from 'rxjs';
+import { firstValueFrom } from 'rxjs';
+import { Auth0Client } from '@auth0/auth0-spa-js';
 import type { components } from './api.generated';
 import { inventoryFixtureMode } from './inventory-http';
 import { RehearsalPanel } from './rehearsal-panel';
@@ -47,6 +49,11 @@ type AssetsResponse = Schemas['InventoryPage'];
 
         <div class="header-controls">
           <!-- Synthetic Identity Selection -->
+          @if (hostedMode()) {
+            <button class="btn btn-secondary" type="button" (click)="hostedSession()">
+              {{ bearerToken() ? 'Sign out' : 'Sign in' }}
+            </button>
+          } @else {
           <div class="identity-control-group">
             <label for="identity-selector" class="control-label">Identity:</label>
             <select
@@ -66,6 +73,7 @@ type AssetsResponse = Schemas['InventoryPage'];
               }
             </select>
           </div>
+          }
 
           <!-- Permitted Tenant Selection -->
           <div class="identity-control-group">
@@ -479,6 +487,8 @@ export class App implements OnInit, OnDestroy {
 
   // Bearer token strictly stored only in component state (not in storage)
   protected readonly bearerToken = signal<string | null>(null);
+  protected readonly hostedMode = signal(false);
+  private hostedClient?: Auth0Client;
 
   readonly findingFilter = signal<string>('');
   readonly assets = signal<Asset[]>([]);
@@ -532,7 +542,81 @@ export class App implements OnInit, OnDestroy {
   });
 
   ngOnInit(): void {
-    this.fetchPrincipals();
+    void this.initializeSession();
+  }
+
+  private async initializeSession(): Promise<void> {
+    if (this.fixtureMode) {
+      this.fetchPrincipals();
+      return;
+    }
+    this.error.set(null);
+    this.isLoadingPrincipals.set(true);
+    try {
+      const config = await firstValueFrom(this.http.get<Schemas['AuthConfig']>('/api/v1/auth/config'));
+      if (config.mode === 'local') {
+        this.fetchPrincipals();
+        return;
+      }
+      this.hostedMode.set(true);
+      if (!config.issuer || !config.audience || !config.client_id) throw new Error('Incomplete hosted settings');
+      this.hostedClient = new Auth0Client({
+        domain: new URL(config.issuer).host,
+        clientId: config.client_id,
+        cacheLocation: 'memory',
+        authorizationParams: { audience: config.audience, redirect_uri: location.origin + '/' },
+      });
+      const query = new URLSearchParams(location.search);
+      if (query.has('state') && (query.has('code') || query.has('error'))) {
+        try {
+          await this.hostedClient.handleRedirectCallback();
+        } finally {
+          history.replaceState(null, '', location.pathname);
+        }
+      } else {
+        await this.hostedClient.checkSession();
+      }
+      if (await this.hostedClient.isAuthenticated()) {
+        const token = await this.hostedClient.getTokenSilently();
+        if (!token) throw new Error('Missing access token');
+        const profile = await firstValueFrom(this.http.get<Principal>('/api/v1/auth/profile', {
+          headers: { Authorization: `Bearer ${token}` },
+        }));
+        this.principals.set([profile]);
+        this.selectedPrincipalId.set(profile.id);
+        this.activeTenantId.set(profile.tenants[0]?.id ?? '');
+        this.bearerToken.set(token);
+        this.fetchAssets();
+      }
+    } catch {
+      this.error.set('Sign-in could not be restored. Retry or sign in again.');
+    } finally {
+      this.isLoadingPrincipals.set(false);
+    }
+  }
+
+  protected async hostedSession(): Promise<void> {
+    try {
+      if (!this.hostedClient) {
+        await this.initializeSession();
+        return;
+      }
+      if (this.bearerToken()) {
+        this.cancelAllRequests();
+        this.identitySequence++;
+        this.bearerToken.set(null);
+        this.assets.set([]);
+        this.selectedAsset.set(null);
+        this.totalAssets.set(0);
+        this.principals.set([]);
+        this.activeTenantId.set('');
+        await this.hostedClient.logout({ logoutParams: { returnTo: location.origin + '/' } });
+      } else {
+        await this.hostedClient.loginWithRedirect();
+      }
+    } catch {
+      this.error.set('Sign-in is unavailable. Try again.');
+    }
   }
 
   ngOnDestroy(): void {
@@ -846,6 +930,10 @@ export class App implements OnInit, OnDestroy {
    */
   retryCurrentAction(): void {
     if (!this.bearerToken()) {
+      if (this.hostedMode() || !this.selectedPrincipalId()) {
+        void this.initializeSession();
+        return;
+      }
       const principalId = this.selectedPrincipalId();
       if (principalId) {
         this.switchPrincipal(principalId);

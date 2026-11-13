@@ -1,0 +1,18 @@
+groups:
+  - name: fleet
+    rules:
+      - alert: FleetEvidenceWaiting
+        expr: fleet_observations_oldest_unapplied_seconds > 60
+        for: 1m
+        annotations:
+          summary: Check observation relay, projector and quarantine.
+      - alert: FleetWorkerNotCheckingIn
+        expr: fleet_worker_heartbeat_age_seconds > 30
+        for: 1m
+        annotations:
+          summary: Check worker logs and dependency health before restarting.
+      - alert: FleetApiUnreachable
+        expr: up{job="fleet"} == 0
+        for: 1m
+        annotations:
+          summary: Check API readiness and database connectivity.

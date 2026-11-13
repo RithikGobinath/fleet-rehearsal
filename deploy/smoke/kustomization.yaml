@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: [../base, postgres.yaml]
+namespace: fleet
+patches:
+  - target: {kind: ConfigMap, name: fleet-runtime}
+    patch: |-
+      - op: replace
+        path: /data/FLEET_DEMO_MODE
+        value: local
+  - target: {kind: StatefulSet, name: kafka}
+    patch: |-
+      - op: replace
+        path: /spec/volumeClaimTemplates/0/spec/storageClassName
+        value: standard
+images:
+  - {name: fleet-api, newName: fleet-api, newTag: smoke}
+  - {name: fleet-web, newName: fleet-web, newTag: smoke}

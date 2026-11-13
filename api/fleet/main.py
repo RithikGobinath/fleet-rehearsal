@@ -1,25 +1,29 @@
 import hashlib
 import json
+import logging
 import os
 import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
+from time import perf_counter
 from typing import Annotated, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import psycopg
 from fastapi import Depends, FastAPI, Header, HTTPException, Path as PathParam, Query, Request
 from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 
 from fleet.inventory_import import IMPORT_SCHEMA, InventoryBatch, read_inventory_import, store_inventory_import
+from fleet.hosted_auth import HostedTokens
+from fleet.metrics import observe_request, render_metrics
 from fleet import observations, rehearsal
-from fleet.settings import LocalSettings
-from fleet.storage import INVENTORY_PAGE_SQL, initialize_inventory
+from fleet.settings import HostedSettings, LocalSettings, runtime_settings
+from fleet.storage import INVENTORY_PAGE_SQL, MIGRATIONS, initialize_inventory
 
 
 ADVISORY_URL = "https://www.cisco.com/c/en/us/support/docs/csa/cisco-sa-cat9k-PtmD7bgy.html"
@@ -79,7 +83,7 @@ class InventoryPage(BaseModel):
 
 
 def get_db(request: Request):
-    settings: LocalSettings = request.app.state.settings
+    settings: LocalSettings | HostedSettings = request.app.state.settings
     with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
         yield conn
 
@@ -89,23 +93,54 @@ Database = Annotated[psycopg.Connection, Depends(get_db)]
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    settings = LocalSettings.from_env(os.environ)
+    settings = runtime_settings(os.environ)
     seed = json.loads(settings.fixture_path.read_text(encoding="utf-8"))
     with psycopg.connect(settings.database_url) as conn:
         initialize_inventory(conn, seed)
         rehearsal.seed_rehearsal(conn)
     app.state.settings = settings
+    app.state.hosted_tokens = HostedTokens(settings) if isinstance(settings, HostedSettings) else None
     yield
 
 
 app = FastAPI(title="Fleet Rehearsal", version="0.1.0", lifespan=lifespan)
+log = logging.getLogger("uvicorn.error")
+
+
+@app.middleware("http")
+async def observe_http(request: Request, call_next):
+    start = perf_counter()
+    correlation = uuid4()
+    token = rehearsal.request_correlation.set(correlation)
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        response.headers["X-Request-ID"] = str(correlation)
+        return response
+    finally:
+        rehearsal.request_correlation.reset(token)
+        if request.url.path not in ("/metrics", "/healthz", "/readyz"):
+            elapsed = perf_counter() - start
+            observe_request(status, elapsed)
+            route = getattr(request.scope.get("route"), "path", "unmatched")
+            log.info("request_id=%s route=%s status=%d duration_ms=%.1f", correlation, route, status, elapsed * 1000)
 
 
 def principal_id(
     db: Database,
+    request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
 ) -> str:
-    if credentials and len(credentials.credentials) == 43:
+    settings = request.app.state.settings
+    if credentials and isinstance(settings, HostedSettings):
+        subject = request.app.state.hosted_tokens.subject(credentials.credentials)
+        if subject:
+            identity = db.execute("SELECT principal_id FROM hosted_identities WHERE (issuer,subject)=(%s,%s)",
+                                  (settings.issuer, subject)).fetchone()
+            if identity:
+                return identity["principal_id"]
+    elif credentials and len(credentials.credentials) == 43:
         token_hash = hashlib.sha256(credentials.credentials.encode()).digest()
         session = db.execute(
             "SELECT principal_id FROM demo_sessions WHERE token_hash = %s AND expires_at > now()",
@@ -113,7 +148,7 @@ def principal_id(
         ).fetchone()
         if session:
             return session["principal_id"]
-    raise HTTPException(401, "Sign in with a demo identity.", headers={"WWW-Authenticate": "Bearer"})
+    raise HTTPException(401, "Sign in to continue.", headers={"WWW-Authenticate": "Bearer"})
 
 
 Caller = Annotated[str, Depends(principal_id)]
@@ -242,7 +277,8 @@ def rehearsal_write(db, scope, caller, role, operation, key, payload, action):
         db.execute("SELECT 1 FROM sites WHERE (tenant_id,id)=(%s,%s) FOR UPDATE", scope)
         require_site(db, caller, *scope, (role,), lock=True)
         status, body, location = rehearsal.write_once(db, scope, caller, operation, key, payload, action)
-    return JSONResponse(body, status, headers={"Location": location} if location else None)
+    headers = {"Location": location} if location else {}
+    return JSONResponse(body, status, headers=headers)
 
 
 def scoped_errors(request):
@@ -319,7 +355,53 @@ def health(db: Database) -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/v1/demo/principals")
+@app.get("/readyz", include_in_schema=False)
+def ready(db: Database) -> dict[str, str]:
+    if db.execute("SELECT count(*) AS count FROM inventory_migrations").fetchone()["count"] != len(MIGRATIONS):
+        raise HTTPException(503, "Database migrations are incomplete.")
+    return {"status": "ready"}
+
+
+@app.get("/metrics", include_in_schema=False, response_class=PlainTextResponse)
+def metrics(db: Database):
+    return PlainTextResponse(render_metrics(db), media_type="text/plain; version=0.0.4")
+
+
+def require_local(request: Request):
+    if not isinstance(request.app.state.settings, LocalSettings):
+        raise HTTPException(404, "Not found.")
+
+
+class AuthConfig(BaseModel):
+    mode: Literal["local", "hosted"]
+    issuer: str | None = None
+    audience: str | None = None
+    client_id: str | None = None
+
+
+@app.get("/v1/auth/config", operation_id="authConfig")
+def auth_config(request: Request) -> AuthConfig:
+    settings = request.app.state.settings
+    if isinstance(settings, HostedSettings):
+        return AuthConfig(mode="hosted", issuer=settings.issuer, audience=settings.audience, client_id=settings.client_id)
+    return AuthConfig(mode="local")
+
+
+@app.get("/v1/auth/profile", operation_id="authProfile")
+def auth_profile(db: Database, caller: Caller) -> Principal:
+    row = db.execute(
+        """SELECT p.id,p.label,COALESCE(
+               (SELECT json_agg(json_build_object('id',t.id,'label',t.label) ORDER BY t.id)
+                FROM tenants t WHERE EXISTS (SELECT 1 FROM grants g WHERE g.principal_id=p.id AND g.tenant_id=t.id)),
+               '[]'::json) AS tenants
+           FROM principals p WHERE p.id=%s""", (caller,),
+    ).fetchone()
+    if not row:
+        raise HTTPException(401, "Sign in to continue.")
+    return Principal(**row)
+
+
+@app.get("/v1/demo/principals", dependencies=[Depends(require_local)])
 def demo_principals(db: Database) -> PrincipalList:
     rows = db.execute(
         """SELECT p.id, p.label,
@@ -333,7 +415,7 @@ def demo_principals(db: Database) -> PrincipalList:
     return PrincipalList(items=[Principal(**row) for row in rows])
 
 
-@app.post("/v1/demo/session")
+@app.post("/v1/demo/session", dependencies=[Depends(require_local)])
 def new_session(request: SessionRequest, db: Database) -> SessionResponse:
     if db.execute("SELECT 1 FROM grants WHERE principal_id = %s LIMIT 1", (request.principal_id,)).fetchone() is None:
         raise HTTPException(404, "Demo identity not found.")
