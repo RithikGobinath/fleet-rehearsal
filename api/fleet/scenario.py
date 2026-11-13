@@ -14,6 +14,9 @@ def apply_scenario(db, scope, scenario):
     with db.transaction():
         db.execute("SELECT 1 FROM sites WHERE (tenant_id,id)=(%s,%s) FOR UPDATE", scope)
         current = site_state(db, scope)
+        if scenario == "minute-later":
+            db.execute("UPDATE rehearsal_sites SET clock_at='2026-11-10T19:01:00Z' WHERE (tenant_id,site_id)=(%s,%s)", scope)
+            return current["snapshot_revision"]
         graph = deepcopy(current["graph"])
         revision = current["snapshot_revision"] + 1
         graph["revision"] = revision
@@ -32,7 +35,7 @@ def apply_scenario(db, scope, scenario):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("scenario", choices=("healthy", "healthy-next", "peer-down", "canary-fail"))
+    parser.add_argument("scenario", choices=("healthy", "healthy-next", "peer-down", "canary-fail", "minute-later"))
     args = parser.parse_args()
     settings = LocalSettings.from_env(os.environ)
     with psycopg.connect(settings.database_url, row_factory=dict_row) as db:

@@ -5,6 +5,7 @@ import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import Annotated, Literal
+from uuid import UUID
 
 import psycopg
 from fastapi import Depends, FastAPI, Header, HTTPException, Path as PathParam, Query, Request
@@ -16,7 +17,7 @@ from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 
 from fleet.inventory_import import IMPORT_SCHEMA, InventoryBatch, read_inventory_import, store_inventory_import
-from fleet import rehearsal
+from fleet import observations, rehearsal
 from fleet.settings import LocalSettings
 from fleet.storage import INVENTORY_PAGE_SQL, initialize_inventory
 
@@ -201,7 +202,38 @@ def rehearsal_context(tenant_id: AssetId, site_id: AssetId, db: Database, caller
     oldest = clock - timedelta(seconds=state["graph"]["max_age_seconds"])
     return RehearsalContext(role=role, clock_at=rehearsal.stamp(clock),
                             last_observed_at=rehearsal.stamp(max(observed)) if observed else None,
-                            stale=any(value < oldest or value > clock for value in observed), pending=False)
+                            stale=any(value < oldest or value > clock for value in observed),
+                            pending=rehearsal.pending_evidence(db, (tenant_id, site_id)))
+
+
+def lock_site_operator(db, caller, scope):
+    require_site_role(db, caller, *scope, "operator")
+    db.execute("SELECT 1 FROM sites WHERE (tenant_id,id)=(%s,%s) FOR UPDATE", scope)
+    require_site(db, caller, *scope, ("operator",), lock=True)
+
+
+@app.post(SCOPE_PATH + "/observations", status_code=202, operation_id="acceptObservation")
+def accept_observation(tenant_id: AssetId, site_id: AssetId, body: observations.ObservationRequest,
+                       db: Database, caller: Caller):
+    scope = (tenant_id, site_id)
+    with db.transaction():
+        lock_site_operator(db, caller, scope)
+        return observations.accept(db, scope, body)
+
+
+@app.get(SCOPE_PATH + "/observations/quarantine", operation_id="observationQuarantine")
+def observation_quarantine(tenant_id: AssetId, site_id: AssetId, db: Database, caller: Caller):
+    require_site_role(db, caller, tenant_id, site_id, "operator")
+    return observations.quarantine_page(db, (tenant_id, site_id))
+
+
+@app.post(SCOPE_PATH + "/observations/{event_id}/replay", status_code=202, operation_id="replayObservation")
+def replay_observation(tenant_id: AssetId, site_id: AssetId, event_id: UUID, db: Database, caller: Caller):
+    scope = (tenant_id, site_id)
+    with db.transaction():
+        lock_site_operator(db, caller, scope)
+        observations.replay(db, scope, event_id)
+    return {"queued": True}
 
 
 def rehearsal_write(db, scope, caller, role, operation, key, payload, action):

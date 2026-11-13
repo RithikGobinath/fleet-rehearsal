@@ -8,7 +8,8 @@ function control(...args: string[]): void {
   if (process.env.FLEET_TEST_CONTROL) {
     execFileSync(process.execPath, [process.env.FLEET_TEST_CONTROL, ...args], { timeout: 20_000 });
   } else {
-    execFileSync('docker', ['compose', 'exec', '-T', 'api', 'python', '-m', ...args], { timeout: 20_000 });
+    execFileSync('docker', ['compose', 'exec', '-T', '-e', 'FLEET_KAFKA_BOOTSTRAP=kafka:9092',
+      'api', 'python', '-m', ...args], { timeout: 25_000 });
   }
 }
 
@@ -35,6 +36,7 @@ async function approve(page: Page, planId: string): Promise<void> {
 
 test('approves and rehearses a canary, then blocks a separate approved wave after its peer goes down', async ({ page }, info) => {
   test.skip(process.env.FLEET_EXPECT_FIXTURES === '1', 'Uses live PostgreSQL and the simulated worker.');
+  if (process.env.FLEET_E2E_EVENTS === '1') test.setTimeout(90_000);
   const success = `passing-${randomUUID().slice(0, 12)}`;
   const blocked = `blocked-${randomUUID().slice(0, 12)}`;
   const snap = async (name: string) => {
@@ -57,7 +59,29 @@ test('approves and rehearses a canary, then blocks a separate approved wave afte
     await snap('passing-wave');
 
     await approve(page, blocked);
-    control('fleet.scenario', 'peer-down');
+    const viaBroker = process.env.FLEET_E2E_EVENTS === '1';
+    if (viaBroker) {
+      const login = await page.request.post('/api/v1/demo/session', { data: { principal_id: 'demo-northstar' } });
+      const { access_token } = await login.json();
+      control('fleet.scenario', 'minute-later');
+      const accepted = await page.request.post(`${scope}/observations`, {
+        headers: { Authorization: `Bearer ${access_token}` },
+        data: { schema_version: 1, event_id: randomUUID(), asset_id: 'harbor-02', source_id: 'synthetic-health',
+          source_revision: Date.now(), observed_at: '2026-11-10T19:00:30Z', evidence: { healthy: false } },
+      });
+      expect(accepted.status()).toBe(202);
+      await page.getByRole('button', { name: 'Refresh evidence' }).click();
+      await expect(page.getByText(/Evidence is pending/)).toBeVisible();
+      await page.getByRole('button', { name: 'Start wave 1', exact: true }).click();
+      await expect(page.getByRole('alert').filter({ hasText: 'pending_evidence' })).toBeVisible();
+      await snap('pending-observation');
+      control('fleet.event_worker', 'relay', '--once');
+      control('fleet.event_worker', 'project', '--once');
+      await page.getByRole('button', { name: 'Refresh evidence' }).click();
+      await expect(page.getByText(/Last observation: 2026-11-10T19:00:30Z/)).toBeVisible();
+    } else {
+      control('fleet.scenario', 'peer-down');
+    }
     await page.getByRole('button', { name: 'Start wave 1', exact: true }).click();
     await expect(page.getByRole('alert').filter({ hasText: 'alternate_path_unavailable' })).toBeVisible();
     await expect(page.getByRole('heading', { name: /^Run run-/ })).toHaveCount(0);
@@ -71,7 +95,7 @@ test('approves and rehearses a canary, then blocks a separate approved wave afte
     const { items } = await response.json();
     expect(items.filter(event => event.plan_id === success && event.kind === 'simulator_started')).toHaveLength(1);
     expect(items.filter(event => event.plan_id === blocked).map(event => event.kind))
-      .toEqual(['plan_previewed', 'plan_approved', 'wave_blocked']);
+      .toEqual(['plan_previewed', 'plan_approved', 'wave_blocked', ...(viaBroker ? ['wave_blocked'] : [])]);
   } finally {
     control('fleet.scenario', 'healthy');
   }

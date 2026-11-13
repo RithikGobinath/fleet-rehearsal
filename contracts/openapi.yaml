@@ -21,6 +21,12 @@ paths:
     $ref: './openapi.json#/paths/~1v1~1tenants~1{tenant_id}~1sites~1{site_id}~1inventory~1import'
   /v1/tenants/{tenant_id}/sites/{site_id}/rehearsal/context:
     $ref: './openapi.json#/paths/~1v1~1tenants~1{tenant_id}~1sites~1{site_id}~1rehearsal~1context'
+  /v1/tenants/{tenant_id}/sites/{site_id}/observations:
+    $ref: './openapi.json#/paths/~1v1~1tenants~1{tenant_id}~1sites~1{site_id}~1observations'
+  /v1/tenants/{tenant_id}/sites/{site_id}/observations/quarantine:
+    $ref: './openapi.json#/paths/~1v1~1tenants~1{tenant_id}~1sites~1{site_id}~1observations~1quarantine'
+  /v1/tenants/{tenant_id}/sites/{site_id}/observations/{event_id}/replay:
+    $ref: './openapi.json#/paths/~1v1~1tenants~1{tenant_id}~1sites~1{site_id}~1observations~1{event_id}~1replay'
   /v1/tenants/{tenant_id}/sites/{site_id}/plans/{plan_id}/revisions:
     parameters:
       - $ref: '#/components/parameters/Tenant'
