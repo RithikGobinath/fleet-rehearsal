@@ -9,6 +9,7 @@ spec:
     spec:
       serviceAccountName: fleet-api
       securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      volumes: [{name: rds-ca, configMap: {name: fleet-rds-ca, optional: true}}]
       containers:
         - name: api
           image: fleet-api
@@ -16,6 +17,7 @@ spec:
             - configMapRef: {name: fleet-runtime}
             - secretRef: {name: fleet-runtime-secrets}
           ports: [{containerPort: 8000}]
+          volumeMounts: [{name: rds-ca, mountPath: /etc/fleet/rds, readOnly: true}]
           securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
           resources: {requests: {cpu: 150m, memory: 192Mi}, limits: {cpu: 500m, memory: 384Mi}}
           startupProbe: {httpGet: {path: /readyz, port: 8000}, periodSeconds: 3, failureThreshold: 40}
@@ -32,10 +34,12 @@ spec:
     spec:
       serviceAccountName: fleet-worker
       securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      volumes: [{name: rds-ca, configMap: {name: fleet-rds-ca, optional: true}}]
       containers:
         - name: worker
           image: fleet-api
           command: [python, -m, fleet.worker]
+          volumeMounts: [{name: rds-ca, mountPath: /etc/fleet/rds, readOnly: true}]
           envFrom:
             - configMapRef: {name: fleet-runtime}
             - secretRef: {name: fleet-runtime-secrets}
@@ -52,10 +56,12 @@ spec:
     spec:
       serviceAccountName: fleet-observations
       securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      volumes: [{name: rds-ca, configMap: {name: fleet-rds-ca, optional: true}}]
       containers:
         - name: relay
           image: fleet-api
           command: [python, -m, fleet.event_worker, relay]
+          volumeMounts: [{name: rds-ca, mountPath: /etc/fleet/rds, readOnly: true}]
           envFrom:
             - configMapRef: {name: fleet-runtime}
             - secretRef: {name: fleet-runtime-secrets}
@@ -64,6 +70,7 @@ spec:
         - name: projector
           image: fleet-api
           command: [python, -m, fleet.event_worker, project]
+          volumeMounts: [{name: rds-ca, mountPath: /etc/fleet/rds, readOnly: true}]
           envFrom:
             - configMapRef: {name: fleet-runtime}
             - secretRef: {name: fleet-runtime-secrets}

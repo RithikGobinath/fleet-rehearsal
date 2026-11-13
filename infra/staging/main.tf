@@ -1,7 +1,9 @@
 locals {
-  name     = "fleet-rehearsal-staging"
-  github   = "RithikGobinath/fleet-rehearsal"
-  prefixes = toset(["api", "web"])
+  name          = "fleet-rehearsal-staging"
+  github        = "RithikGobinath/fleet-rehearsal"
+  github_repo   = "1453141406"
+  github_prefix = "repo:RithikGobinath@116565536/fleet-rehearsal@${local.github_repo}"
+  prefixes      = toset(["api", "web"])
 }
 
 data "aws_availability_zones" "available" {
@@ -132,16 +134,6 @@ resource "aws_ecr_repository" "image" {
   encryption_configuration { encryption_type = "AES256" }
 }
 
-resource "aws_ecr_lifecycle_policy" "retain" {
-  for_each   = aws_ecr_repository.image
-  repository = each.value.name
-  policy = jsonencode({ rules = [{
-    rulePriority = 1, description = "Retain recent builds"
-    selection    = { tagStatus = "any", countType = "imageCountMoreThan", countNumber = 20 }
-    action       = { type = "expire" }
-  }] })
-}
-
 resource "aws_iam_role" "publisher" {
   name = "${local.name}-publisher"
   assume_role_policy = jsonencode({
@@ -151,10 +143,9 @@ resource "aws_iam_role" "publisher" {
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = { StringEquals = {
         "token.actions.githubusercontent.com:aud"           = "sts.amazonaws.com"
-        "token.actions.githubusercontent.com:sub"           = "repo:${local.github}:ref:refs/heads/main"
-        "token.actions.githubusercontent.com:repository_id" = "1453141406"
+        "token.actions.githubusercontent.com:sub"           = "${local.github_prefix}:ref:refs/heads/main:workflow_ref:${local.github}/.github/workflows/publish-release.yml@refs/heads/main:event_name:workflow_run"
+        "token.actions.githubusercontent.com:repository_id" = local.github_repo
         "token.actions.githubusercontent.com:ref"           = "refs/heads/main"
-        "token.actions.githubusercontent.com:workflow"      = "Publish immutable release"
       } }
     }]
   })
