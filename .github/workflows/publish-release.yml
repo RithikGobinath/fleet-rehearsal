@@ -1,0 +1,87 @@
+name: Publish immutable release
+on:
+  workflow_run:
+    workflows: [Release candidate checks]
+    types: [completed]
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: publish-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      vars.FLEET_RELEASE_ENABLED == 'true' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.id == github.event.repository.id
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+      CI_RUN: ${{ github.event.workflow_run.id }}
+      AWS_REGION: ${{ vars.FLEET_AWS_REGION }}
+      REGISTRY: ${{ vars.FLEET_ECR_REGISTRY }}
+    steps:
+      - name: Verify CI and source
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$CI_RUN" =~ ^[0-9]+$ ]]
+          [[ "$AWS_REGION" =~ ^[a-z0-9-]+$ ]]
+          [[ "$REGISTRY" =~ ^[0-9]{12}\.dkr\.ecr\.([a-z0-9-]+)\.amazonaws\.com$ ]]
+          [[ "${BASH_REMATCH[1]}" == "$AWS_REGION" ]]
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)" = "$SOURCE_SHA"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$CI_RUN/jobs" |
+            jq -es '[.[].jobs[] | select(.name == "Fleet release gate")] | length == 1 and .[0].conclusion == "success"'
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - name: Build and scan the release images
+        run: |
+          docker build --target runtime -f api/Dockerfile -t "fleet-api:$SOURCE_SHA" .
+          docker build -f web/Dockerfile -t "fleet-web:$SOURCE_SHA" .
+          bash scripts/scan-image.sh "fleet-api:$SOURCE_SHA" release/api-scan.json
+          bash scripts/scan-image.sh "fleet-web:$SOURCE_SHA" release/web-scan.json
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          role-to-assume: ${{ vars.FLEET_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ vars.FLEET_AWS_REGION }}
+          role-duration-seconds: 900
+      - name: Publish immutable images and record evidence
+        run: |
+          set -euo pipefail
+          test "$(aws sts get-caller-identity --query Account --output text)" = "${REGISTRY%%.*}"
+          aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$REGISTRY"
+          trap 'docker logout "$REGISTRY" >/dev/null' EXIT
+          tag="$SOURCE_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          for name in api web; do
+            repository="fleet-rehearsal/$name"
+            image="$REGISTRY/$repository:$tag"
+            docker tag "fleet-$name:$SOURCE_SHA" "$image"
+            docker push "$image"
+            digest="$(aws ecr describe-images --repository-name "$repository" --image-ids "imageTag=$tag" --query 'imageDetails[0].imageDigest' --output text)"
+            [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+            sum="$(sha256sum "release/$name-scan.json" | cut -d ' ' -f1)"
+            jq -n --arg reference "$REGISTRY/$repository@$digest" --arg scan_sha256 "$sum" \
+              '{reference: $reference, scan_sha256: $scan_sha256}' > "release/$name-image.json"
+          done
+          jq -n --arg source_sha "$SOURCE_SHA" --argjson ci_run "$CI_RUN" \
+            --slurpfile api release/api-image.json --slurpfile web release/web-image.json \
+            '{schema:1, source_sha:$source_sha, ci_run:$ci_run, images:{api:$api[0], web:$web[0]}}' > release/manifest.json
+          python3 scripts/render-release.py release/manifest.json > /tmp/release-render.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: fleet-release-${{ github.event.workflow_run.head_sha }}
+          path: release
+          if-no-files-found: error
