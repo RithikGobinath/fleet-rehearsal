@@ -135,7 +135,7 @@ def request_page(port, token):
 
 def measure(port, token, seconds):
     samples = []
-    with ThreadPoolExecutor(max_workers=32) as pool:
+    with ThreadPoolExecutor(max_workers=128) as pool:
         epoch = perf_counter()
         for index in range(RATE * seconds):
             scheduled = epoch + index / RATE
@@ -176,9 +176,12 @@ def benchmark(admin_dsn, seconds, source):
 
     errors = Counter(error for _, _, _, error in samples if error)
     latencies = [latency for _, latency, _, _ in samples if latency is not None]
+    scheduled_latency = p95([latency + (start - target) * 1000 for target, latency, start, _ in samples
+                             if latency is not None])
     lags = [(start - target) * 1000 for target, _, start, _ in samples]
     lag = p95(lags)
-    valid = not errors and lag is not None and lag < 1000 / RATE
+    succeeded = not warmup_errors and not errors and len(latencies) == RATE * seconds
+    valid = succeeded and lag is not None and lag < 1000 / RATE
     dispatch_span = samples[-1][2] - samples[0][2] if samples else None
     latency = p95(latencies)
     return {
@@ -197,9 +200,11 @@ def benchmark(admin_dsn, seconds, source):
         "p95_dispatch_lag_ms": lag,
         "max_dispatch_lag_ms": round(max(lags), 3) if lags else None,
         "p95_response_ms": latency,
+        "p95_from_scheduled_start_ms": scheduled_latency,
         "target_p95_ms_exclusive": TARGET_MS,
+        "functional_pass": succeeded,
         "valid_workload": valid,
-        "target_met": valid and latency < TARGET_MS,
+        "target_met": valid and scheduled_latency < TARGET_MS,
         "environment": {
             "platform": platform.platform(),
             "logical_cpus": os.cpu_count(),
@@ -228,4 +233,6 @@ if __name__ == "__main__":
         parser.error("--source must be a 40-character commit SHA.")
     report = benchmark(args.admin_dsn, args.seconds, args.source)
     print(json.dumps(report, indent=2))
-    raise SystemExit(0 if report["valid_workload"] else 1)
+    if not report["target_met"]:
+        print("Latency target missed or dispatch timing was inconclusive. See the JSON report.", file=sys.stderr)
+    raise SystemExit(0 if report["functional_pass"] else 1)

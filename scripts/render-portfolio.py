@@ -60,6 +60,8 @@ def render(screenshots, reports):
         ("Logical starts in replay test", int(replay["simulator_starts"])),
         ("Synthetic planner sites", int(planner["sites_per_seed"]) * len(planner["runs"])),
     )
+    timing = ("The measured workload met the latency target." if api["target_met"] else
+              "The latency target was missed or the request pacing was inconclusive. See the raw report.")
     stats = "".join(f'<p class="metric"><strong>{escape(str(value))}</strong>{escape(label)}</p>'
                     for label, value in metrics)
     nav = "".join(f'<a href="#{name}">{escape(title)}</a>' for name, title, _ in SHOTS)
@@ -68,7 +70,7 @@ def render(screenshots, reports):
 <title>Fleet Rehearsal walkthrough</title><style>{STYLE}</style></head>
 <body><main><header><h1>Fleet Rehearsal</h1><p>Synthetic Harbor maintenance on a disposable local stack.</p>
 <code>{sha}</code></header><nav aria-label="Walkthrough steps">{nav}</nav>
-{''.join(cards)}<section><h2>Measured workload</h2><div class="metrics">{stats}</div>
+{''.join(cards)}<section><h2>Measured workload</h2><div class="metrics">{stats}</div><p>{timing}</p>
 <p>Loopback HTTP and test broker evidence from GitHub Actions.</p></section></main></body></html>"""
 
 
