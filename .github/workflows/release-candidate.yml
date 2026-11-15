@@ -10,7 +10,7 @@ permissions:
 jobs:
   inventory:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -36,10 +36,22 @@ jobs:
         working-directory: web
         run: |
           npx playwright install --with-deps chromium
-          FLEET_E2E_EVENTS=1 npm run test:e2e
+          FLEET_E2E_EVENTS=1 FLEET_RECORD_DEMO=1 npm run test:e2e
           FLEET_EXPECT_FIXTURES=1 npm run test:e2e -- inventory.spec.ts --output test-results-fixtures
       - name: Verify Kafka redelivery after the browser journey
         run: docker compose exec -T -e FLEET_KAFKA_BOOTSTRAP=kafka:9092 api python -m unittest discover -s tests -p test_observations.py -k real_broker -v
+      - name: Measure the local workload and capture operational evidence
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          source_sha="$(git rev-parse HEAD)"
+          printf '%s\n' "$source_sha" > reports/source-sha.txt
+          PYTHONPATH=api python3 scripts/benchmark-planner.py > reports/planner.json
+          docker compose exec -T api python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/metrics').read().decode(), end='')" > reports/prometheus.txt
+          docker compose cp scripts/benchmark-api.py api:/tmp/benchmark-api.py
+          docker compose exec -T -e PYTHONPATH=/app api python /tmp/benchmark-api.py --admin-dsn postgresql://fleet@db:5432/postgres --source "$source_sha" > reports/api-latency.json
+          docker compose cp scripts/benchmark-replay.py api:/tmp/benchmark-replay.py
+          docker compose exec -T -e PYTHONPATH=/app -e FLEET_KAFKA_BOOTSTRAP=kafka:9092 -e "GITHUB_SHA=$source_sha" api python /tmp/benchmark-replay.py > reports/kafka-replay.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
@@ -48,6 +60,12 @@ jobs:
             web/test-results
             web/test-results-fixtures
           if-no-files-found: ignore
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: local-portfolio-evidence
+          path: reports
+          if-no-files-found: warn
       - name: Print service logs on failure
         if: failure()
         run: docker compose --profile events logs --no-color
@@ -90,7 +108,7 @@ jobs:
           if-no-files-found: error
   deployment:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -126,6 +144,34 @@ jobs:
           kubectl -n fleet delete pod kafka-0
           kubectl -n fleet rollout status statefulset/kafka --timeout=240s
           kubectl -n fleet exec statefulset/kafka -- /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list | grep -Fx fleet-observations-v1
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ff086675aa2a557b437f87d4f9ea8c96abfbb92a
+          path: previous-release
+          persist-credentials: false
+      - name: Run the migration job and rehearse local rollback and restore
+        run: |
+          set -euo pipefail
+          docker build --target runtime -f previous-release/api/Dockerfile -t fleet-api:previous previous-release
+          /tmp/kind load docker-image fleet-api:previous
+          mkdir -p deploy/migration-smoke
+          cat > deploy/migration-smoke/kustomization.yaml <<'YAML'
+          apiVersion: kustomize.config.k8s.io/v1beta1
+          kind: Kustomization
+          resources: [../migration]
+          images:
+            - name: fleet-api
+              newTag: smoke
+          YAML
+          job="$(kubectl create -k deploy/migration-smoke -o name)"
+          kubectl -n fleet wait --for=condition=complete "$job" --timeout=120s
+          bash scripts/rehearse-recovery.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: local-recovery-evidence
+          path: reports/local-recovery.json
+          if-no-files-found: warn
       - name: Report cluster diagnostics
         if: failure()
         run: |
