@@ -9,7 +9,7 @@ from psycopg.errors import ForeignKeyViolation
 from psycopg.rows import dict_row
 
 from fleet.main import require_site_role
-from fleet.storage import INVENTORY_PAGE_SQL, MIGRATIONS, initialize_inventory
+from fleet.storage import INVENTORY_PAGE_SQL, MIGRATIONS, initialize_inventory, schema_ready
 
 
 SEED = json.loads(Path("fixtures/inventory.json").read_text(encoding="utf-8"))
@@ -17,6 +17,16 @@ LEGACY_DDL = (Path(__file__).resolve().parents[1] / "fleet/migrations/001_invent
 
 
 class StorageTests(unittest.TestCase):
+    def test_readiness_accepts_an_additive_upgrade_and_rejects_missing_versions(self):
+        with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.transaction(force_rollback=True):
+            conn.execute("SET LOCAL search_path TO pg_temp")
+            self.assertFalse(schema_ready(conn))
+            conn.execute("CREATE TEMP TABLE inventory_migrations (version integer PRIMARY KEY)")
+            conn.execute("INSERT INTO inventory_migrations SELECT generate_series(1,%s)", (len(MIGRATIONS) + 1,))
+            self.assertTrue(schema_ready(conn))
+            conn.execute("DELETE FROM inventory_migrations WHERE version=1")
+            self.assertFalse(schema_ready(conn))
+
     def test_adopts_legacy_database_and_reseeds_without_changing_evidence(self):
         with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.transaction(force_rollback=True):
             conn.execute("CREATE SCHEMA migration_test")

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from psycopg import Connection
+from psycopg.rows import tuple_row
 from psycopg.types.json import Jsonb
 
 
@@ -22,6 +23,16 @@ INVENTORY_PAGE_SQL = """WITH visible AS MATERIALIZED (
 )
 SELECT (SELECT count(*) FROM visible) AS total,
     COALESCE((SELECT json_agg(page ORDER BY id) FROM page), '[]'::json) AS items"""
+
+
+def schema_ready(conn: Connection) -> bool:
+    with conn.cursor(row_factory=tuple_row) as cur:
+        if cur.execute("SELECT to_regclass('inventory_migrations')").fetchone()[0] is None:
+            return False
+        versions = cur.execute(
+            "SELECT version FROM inventory_migrations WHERE version <= %s ORDER BY version", (len(MIGRATIONS),),
+        ).fetchall()
+        return versions == [(version,) for version in range(1, len(MIGRATIONS) + 1)]
 
 
 def initialize_inventory(conn: Connection, seed: dict) -> None:

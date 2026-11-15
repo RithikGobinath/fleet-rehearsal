@@ -14,4 +14,14 @@ Run `python scripts/prepare-promotion.py staging <release.zip> --source <reviewe
 
 For external staging access, use the approved AWS load balancer integration. Set `aws-load-balancer-ssl-cert` to the reviewed ACM certificate ARN and apply `staging/ingress.yaml` after the base is ready. Register the chosen DNS name only after the TLS endpoint is healthy. Use the same immutable manifest when preparing production and select the production cluster with a separate human release identity.
 
+### Start a release with the migration job
+
+Create the namespace, the RDS CA ConfigMap, and the runtime Secret before the migration. After verifying the release archive, render `deploy/release-staging/migration` and check that the Job uses the same API digest as the workloads. In the reviewed staging context, create the Job with `kubectl --context <staging> create -k deploy/release-staging/migration -o name`. Wait for that Job to complete, save its logs, then apply the verified workload overlay. Use the production overlay and a separate approved context for production.
+
+The Job serializes migration and fixture initialization in a single PostgreSQL transaction. The hosted API checks that its schema prefix exists and does not apply migrations at startup. Keep changes additive while the previous release is supported. Rehearse its query and rollout checks against the migrated database before approving the candidate. A failed migration holds the rollout.
+
+### Recovery drill
+
+Keep the verified previous image digests available. To rehearse database recovery, take an approved snapshot or backup, restore into a separate database and compare migration history, scoped row counts, rehearsal revisions, and audit records. Run the scoped health and rehearsal checks against that restored database. Record elapsed time and the age of the newest restored observation. Use a 30-minute staging recovery time target and a 15-minute recovery point target for the drill. Compare actual RDS results with these targets before promotion. The CI backup and restore measures the small disposable PostgreSQL database.
+
 The single Kafka broker can restart and reuse its disk. It has no replica and cannot provide availability after a disk or Availability Zone loss. PostgreSQL stores the accepted observations. Preserve it and reconcile unprocessed events before replaying after broker loss.
