@@ -14,6 +14,16 @@ Use the successful **Release candidate checks** run for the exact PR head. Each 
 
 The safety gate requires green tests, compatible migrations, clean high/critical image scans, and unchanged simulated outcomes after retries. HTTP p95 below 300 ms is a performance target. Record actual results and discuss any miss before a hosted release. An EKS deployment needs separate evidence collected through its own ingress, identity and data recovery controls.
 
+The planner benchmark runs five seeds across 30 simulated sites. Every schedule uses the same per-site windows, blackouts, asset evidence, deadlines, and post-plan peer outages. In a separate counterfactual, severity-first also starts with the canary before ranking the remaining assets. The independent oracle checks redundant service connectivity and freshness, and replay uses the application guards at each start. Affected-device hours count the entire horizon for any unfinished affected asset.
+
+| Planner | Unsafe proposals | Blocked attempts | Completed by deadline (157 eligible) | Affected-device hours |
+| --- | ---: | ---: | ---: | ---: |
+| Fleet Rehearsal | 0 | 30 | 74 | 283.2 |
+| Severity-first with canary | 50 | 80 | 70 | 297.8 |
+| Severity-first | 127 | 127 | 18 | 439.1 |
+
+These are results for generated workloads. They do not establish production performance or predict fleet-wide savings. Verify them with `PYTHONPATH=api python scripts/benchmark-planner.py`.
+
 ## Hosted decision
 
 **Decision for this phase: $0 in AWS.** The release authorizes local portfolio verification. The AWS plan, apply, live checks, and hosted promotion remain pending. Use [the staging deployment steps](../deploy/README.md) and the [AWS sandbox proposal](aws-sandbox.md) when the 24-hour run is approved.
@@ -30,4 +40,4 @@ The repository maintainer owns release and teardown decisions. The operator chec
 
 ## Optional integrations
 
-The local evaluator is fully synthetic. A future read-only MCP explanation should reuse the scoped audit response and preserve caller authorization. A future Cisco evidence connector needs an authorized source, allowed fields, traceable revisions, and a deterministic fixture fallback. For a real-device pilot, require a separate asset-owner decision, scoped lab access, review of data retention, and a human change and rollback owner. There is no pilot approval in this evidence.
+The local evaluator is fully synthetic. The [read-only MCP tool](mcp-explanation.md) reuses the scoped audit response. The [source adapter handoff](source-adapter-handoff.md) records the tested synthetic fallback and the authorization required for any Cisco source or lab pilot.

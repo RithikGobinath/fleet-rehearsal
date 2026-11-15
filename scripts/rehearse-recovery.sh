@@ -36,24 +36,43 @@ kubectl -n fleet exec deployment/api -- env DATABASE_URL=postgresql://fleet@post
 import os
 import psycopg
 from psycopg.rows import dict_row
-from fleet.rehearsal import read_plan
+from uuid import uuid4
+from fleet.rehearsal import preview_plan, read_plan
 from fleet.storage import schema_ready
 with psycopg.connect(os.environ["DATABASE_URL"], row_factory=dict_row) as db:
     assert schema_ready(db)
     assert read_plan(db, ("northstar", "harbor"), "restore-proof", 1)[0]["revision"] == 1
+    status, _, _ = preview_plan(db, ("northstar", "harbor"), "after-restore", 0, uuid4())
+    assert status == 201
 '
 restore_seconds=$((SECONDS - restore_start))
 
 verify_api() {
+  local image="$1" deadline
   kubectl -n fleet rollout status deployment/api --timeout=180s
-  kubectl -n fleet exec deployment/web -- wget -qO- http://127.0.0.1:8080/api/healthz
+  kubectl -n fleet get pods -l app=fleet-api -o json | jq -e --arg image "$image" '
+    any(.items[]; .metadata.deletionTimestamp == null and
+      any(.status.containerStatuses[]?; .name == "api" and .ready and .imageID != "") and
+      any(.spec.containers[]; .name == "api" and .image == $image))'
+  deadline=$((SECONDS + 30))
+  while (( SECONDS < deadline )); do
+    if kubectl -n fleet --request-timeout=7s exec deployment/web -- \
+        wget -qO- -T 3 http://127.0.0.1:8080/api/healthz; then
+      return
+    fi
+    sleep 2
+  done
+  kubectl -n fleet get pods -l app=fleet-api -o wide
+  kubectl -n fleet get endpointslices -l kubernetes.io/service-name=api -o wide
+  kubectl -n fleet logs deployment/web --tail=15
+  return 1
 }
 rollback_start=$SECONDS
 kubectl -n fleet set image deployment/api api=fleet-api:previous
-verify_api
+verify_api fleet-api:previous
 rollback_seconds=$((SECONDS - rollback_start))
 kubectl -n fleet set image deployment/api "api=$current"
-verify_api
+verify_api "$current"
 
 kubectl -n fleet delete pod -l app=fleet-worker
 kubectl -n fleet rollout status deployment/worker --timeout=180s

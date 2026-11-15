@@ -1,6 +1,7 @@
 import json
 import os
 import unittest
+from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -90,9 +91,8 @@ class InventoryTests(unittest.TestCase):
         path = "/v1/tenants/northstar/sites/harbor/inventory/import"
         token = self.tokens["demo-northstar"]
         detail = "/v1/assets/fr21-test?tenant_id=northstar"
-        row = {"id": "fr21-test", "name": "Synthetic import", "product": "Catalyst 9300",
-               "running_release": "lab-affected", "release_status": "affected", "observed_at": "2026-11-10T18:00:00Z",
-               "source_revision": 1}
+        export = json.loads(Path("fixtures/synthetic-inventory-export.json").read_text(encoding="utf-8"))
+        row = export["batch"]["rows"][0]
         try:
             self.assertEqual(request(path, token=self.tokens["demo-partner"], payload={"rows": [row]})[0], 403)
             bad = dict(row, id="fr21-malformed", trunk_port="private-value")
@@ -103,8 +103,11 @@ class InventoryTests(unittest.TestCase):
             status, body = request(path, token=token, payload={"rows": [row, conflict]})
             self.assertEqual((status, body), (409, {"detail": {"code": "inventory_conflict", "row": 2}}))
             self.assertEqual(request(detail, token=token)[0], 404)
-            self.assertEqual(request(path, token=token, payload={"rows": [row]}), (200, {"accepted": 1}))
-            self.assertEqual(request(path, token=token, payload={"rows": [row]}), (200, {"accepted": 1}))
+            self.assertEqual(request(path, token=token, payload=export["batch"]), (200, {"accepted": 1}))
+            self.assertEqual(request(path, token=token, payload=export["batch"]), (200, {"accepted": 1}))
+            updated = dict(row, source_revision=2)
+            self.assertEqual(request(path, token=token, payload={"rows": [updated]})[0], 200)
+            self.assertEqual(request(path, token=token, payload=export["batch"])[0], 409)
             self.assertEqual(request(detail, token=token)[1]["finding"], "needs_evidence")
             self.assertEqual(request(path, token=token, payload={"rows": [dict(row, name="x" * 132_000)]})[0], 413)
         finally:

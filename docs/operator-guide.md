@@ -39,7 +39,7 @@ Use [the build map](build-map.md) to find each block and its acceptance test. Ke
 
 ## Diagnose a stopped rehearsal
 
-- For startup, run `docker compose ps` and `docker compose logs api`. Check `/readyz` from inside the API container at port 8000. Only the health endpoint is proxied to the browser.
+- For startup, run `docker compose ps` and `docker compose logs api`. Check `/readyz` from inside the API container at port 8000. The web proxy exposes `/api/healthz` and keeps readiness and metrics internal.
 - For a denied start, inspect the displayed reason and audit ID. Search the API logs and audit evidence using the response's `X-Request-ID`. The API uses `Idempotency-Key` for write retries. A fresh start against changed evidence uses a fresh key.
 - For pending evidence, inspect the relay and projector logs and the unapplied observation count. Consult the [operations runbook](operations.md) for recovery steps and the Prometheus and Grafana configuration.
 

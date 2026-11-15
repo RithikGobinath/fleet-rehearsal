@@ -1,6 +1,6 @@
 # Fleet Rehearsal in 90 seconds
 
-Play the rehearsal recording from the **browser-evidence** artifact and use these captions with its screenshots. The recording is browser automation with no narration. The voiceover below can accompany it in an interview. Use the measured Prometheus sample from the same Actions run for the operations segment.
+Open `portfolio.html` from **local-portfolio-evidence** for the captioned walkthrough. Play the rehearsal WebM inside **browser-evidence** to see the live interaction. The recording is browser automation with no narration. The voiceover below can accompany it in an interview. Use the measured Prometheus sample from the same Actions run for the operations segment.
 
 | Time | Screen | Voiceover |
 | --- | --- | --- |

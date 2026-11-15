@@ -1,0 +1,20 @@
+{
+  "source": {
+    "provider": "synthetic-lab",
+    "exported_at": "2026-11-10T18:01:00Z",
+    "format_version": 1
+  },
+  "batch": {
+    "rows": [
+      {
+        "id": "fr21-test",
+        "name": "Synthetic import",
+        "product": "Catalyst 9300",
+        "running_release": "lab-affected",
+        "release_status": "affected",
+        "observed_at": "2026-11-10T18:00:00Z",
+        "source_revision": 1
+      }
+    ]
+  }
+}
