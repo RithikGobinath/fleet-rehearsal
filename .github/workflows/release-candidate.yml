@@ -52,6 +52,7 @@ jobs:
           docker compose exec -T -e PYTHONPATH=/app api python /tmp/benchmark-api.py --admin-dsn postgresql://fleet@db:5432/postgres --source "$source_sha" > reports/api-latency.json
           docker compose cp scripts/benchmark-replay.py api:/tmp/benchmark-replay.py
           docker compose exec -T -e PYTHONPATH=/app -e FLEET_KAFKA_BOOTSTRAP=kafka:9092 -e "GITHUB_SHA=$source_sha" api python /tmp/benchmark-replay.py > reports/kafka-replay.json
+          python3 scripts/render-portfolio.py --screenshots web/test-results --reports reports --output reports/portfolio.html
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
