@@ -42,7 +42,7 @@ from fleet.storage import schema_ready
 with psycopg.connect(os.environ["DATABASE_URL"], row_factory=dict_row) as db:
     assert schema_ready(db)
     assert read_plan(db, ("northstar", "harbor"), "restore-proof", 1)[0]["revision"] == 1
-    status, _, _ = preview_plan(db, ("northstar", "harbor"), "after-restore", 0, uuid4())
+    status, _, _ = preview_plan(db, ("northstar", "harbor"), "demo-partner", "after-restore", 0, uuid4())
     assert status == 201
 '
 restore_seconds=$((SECONDS - restore_start))
