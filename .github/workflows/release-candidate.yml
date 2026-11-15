@@ -134,6 +134,14 @@ jobs:
           docker build --target runtime -f api/Dockerfile -t fleet-api:smoke .
           docker build -f web/Dockerfile -t fleet-web:smoke .
           /tmp/kind load docker-image fleet-api:smoke fleet-web:smoke
+          kubectl create namespace fleet
+          kubectl -n fleet apply -f deploy/smoke/postgres.yaml
+          kubectl -n fleet rollout status deployment/postgres --timeout=180s
+          job="$(kubectl create -k deploy/smoke/migration -o name)"
+          if ! kubectl -n fleet wait --for=condition=complete "$job" --timeout=120s; then
+            kubectl -n fleet logs "$job" || true
+            exit 1
+          fi
           kubectl apply -k deploy/smoke
           for app in postgres api web worker observations; do
             kubectl -n fleet rollout status "deployment/$app" --timeout=240s
@@ -149,22 +157,11 @@ jobs:
           ref: ff086675aa2a557b437f87d4f9ea8c96abfbb92a
           path: previous-release
           persist-credentials: false
-      - name: Run the migration job and rehearse local rollback and restore
+      - name: Rehearse local rollback and restore
         run: |
           set -euo pipefail
           docker build --target runtime -f previous-release/api/Dockerfile -t fleet-api:previous previous-release
           /tmp/kind load docker-image fleet-api:previous
-          mkdir -p deploy/migration-smoke
-          cat > deploy/migration-smoke/kustomization.yaml <<'YAML'
-          apiVersion: kustomize.config.k8s.io/v1beta1
-          kind: Kustomization
-          resources: [../migration]
-          images:
-            - name: fleet-api
-              newTag: smoke
-          YAML
-          job="$(kubectl create -k deploy/migration-smoke -o name)"
-          kubectl -n fleet wait --for=condition=complete "$job" --timeout=120s
           bash scripts/rehearse-recovery.sh
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
