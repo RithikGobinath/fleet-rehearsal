@@ -41,7 +41,7 @@ def main():
     args = parser.parse_args()
     overlay = verify(args.artifact, args.source, args.digest)
     target = Path(__file__).resolve().parents[1] / "deploy" / f"release-{args.environment}"
-    migration = {**overlay, "resources": ["../../migration"],
+    migration = {**overlay, "resources": ["../../migration"], "nameSuffix": f"-{args.source[:12]}",
                  "images": [image for image in overlay["images"] if image["name"] == "fleet-api"]}
     for directory, config in ((target, overlay), (target / "migration", migration)):
         directory.mkdir(parents=True, exist_ok=True)

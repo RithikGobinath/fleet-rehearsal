@@ -1,6 +1,6 @@
 apiVersion: batch/v1
 kind: Job
-metadata: {generateName: fleet-migrate-}
+metadata: {name: fleet-migrate}
 spec:
   backoffLimit: 0
   activeDeadlineSeconds: 300

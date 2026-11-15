@@ -16,7 +16,7 @@ For external staging access, use the approved AWS load balancer integration. Set
 
 ### Start a release with the migration job
 
-Create the namespace, the RDS CA ConfigMap, and the runtime Secret before the migration. After verifying the release archive, render `deploy/release-staging/migration` and check that the Job uses the same API digest as the workloads. In the reviewed staging context, create the Job with `kubectl --context <staging> create -k deploy/release-staging/migration -o name`. Wait for that Job to complete, save its logs, then apply the verified workload overlay. Use the production overlay and a separate approved context for production.
+Create the namespace, the RDS CA ConfigMap, and the runtime Secret before the migration. After verifying the release archive, render `deploy/release-staging/migration` and check that the Job uses the same API digest as the workloads. In the reviewed staging context, create the Job with `kubectl --context <staging> create -k deploy/release-staging/migration -o name`. Wait for that revision's Job to complete, save its logs, then apply the verified workload overlay. If that Job fails, retain its logs and investigate before removing the failed Job for a retry. Use the production overlay and a separate approved context for production.
 
 The Job serializes migration and fixture initialization in a single PostgreSQL transaction. The hosted API checks that its schema prefix exists and does not apply migrations at startup. Keep changes additive while the previous release is supported. Rehearse its query and rollout checks against the migrated database before approving the candidate. A failed migration holds the rollout.
 
