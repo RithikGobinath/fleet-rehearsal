@@ -98,9 +98,9 @@ class RehearsalTests(unittest.TestCase):
         url = f"{path}/plans/{plan['plan_id']}/revisions/{plan['revision']}/waves/{number}/runs"
         return call(url, self.tokens["demo-northstar"], {"expected_fingerprint": plan["fingerprint"]}, key)
 
-    def work(self):
+    def work(self, seed=1):
         with connect() as db:
-            self.assertTrue(process_one(db))
+            self.assertTrue(process_one(db, simulation_seed=seed))
 
     def events(self, path):
         return call(f"{path}/audit", self.tokens["demo-approver"])[1]["items"]
@@ -183,9 +183,11 @@ class RehearsalTests(unittest.TestCase):
         _, receipt, location = results[index]
         self.assertEqual(self.start(path, plan, keys[index]), results[index])
         self.assertEqual(self.start(path, plan, keys[index], number=2)[1]["code"], "idempotency_conflict")
+        self.work(seed=None)
         self.work()
-        self.work()
-        self.assertEqual(call(location.removeprefix("/api"), self.tokens["demo-northstar"])[1]["state"], "succeeded")
+        run = call(location.removeprefix("/api"), self.tokens["demo-northstar"])[1]
+        self.assertEqual(run["verification"]["seed"], 1 + int(receipt["run_id"][-8:], 16))
+        self.assertEqual(run["state"], "succeeded" if run["devices"][0]["boot_succeeded"] else "rolled_back")
         self.assertEqual(self.start(path, plan, keys[index])[1], receipt)
         self.assertEqual(sum(event["kind"] == "simulator_started" for event in self.events(path)), 1)
         _, page, _ = call(f"{path}/audit?limit=1", self.tokens["demo-approver"])

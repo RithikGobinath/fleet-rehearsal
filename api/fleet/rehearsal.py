@@ -341,7 +341,7 @@ def audit_page(db, scope, after, limit):
                       "kind": row["kind"]} for row in rows[:limit]], "next_cursor": cursor}
 
 
-def process_one(db):
+def process_one(db, *, simulation_seed=None):
     """Commit at most one synthetic step while holding the site's reservation lock."""
     with db.transaction():
         site = db.execute(
@@ -365,6 +365,7 @@ def process_one(db):
         audit_key = (db, scope, row["actor_id"], row["correlation_id"])
         coordinates = (row["plan_id"], row["revision"], row["wave_number"])
         run = row["run_id"]
+        seed = 1 + int(run[-8:], 16) if simulation_seed is None else simulation_seed
         if row["state"] == "queued":
             grant = db.execute(
                 """SELECT 1 FROM grants WHERE (tenant_id,site_id,principal_id)=(%s,%s,%s)
@@ -374,7 +375,7 @@ def process_one(db):
             if reason:
                 block_reserved(db, scope, row, state["snapshot_revision"], reason)
             else:
-                simulation = start_simulation(wave, state["clock_at"], row["revision"],
+                simulation = start_simulation(wave, state["clock_at"], seed,
                                               state["graph"]["services"], state["fail_canary"])
                 db.execute("""UPDATE rehearsal_runs SET state='running',started_at=now(),snapshot_revision=%s,simulation=%s
                               WHERE (tenant_id,site_id,run_id)=(%s,%s,%s) AND state='queued'""",
@@ -390,7 +391,7 @@ def process_one(db):
                                       WHERE (tenant_id,site_id,revision)=(%s,%s,%s)""",
                                    (*scope, row["snapshot_revision"])).fetchone()["graph"]
                 simulation = start_simulation(wave, datetime.fromisoformat(wave["starts_at"]),
-                                              row["revision"], graph["services"], state["fail_canary"])
+                                              seed, graph["services"], state["fail_canary"])
             outcome, devices, verification = finish_simulation(simulation, state["graph"],
                                                                state["snapshot_revision"], state["clock_at"])
             reason = None if outcome == "succeeded" else "verification_failed"

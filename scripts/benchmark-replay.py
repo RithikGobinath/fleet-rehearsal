@@ -121,7 +121,7 @@ def verify_rehearsal(dsn):
 
         first = start(db, key)
         check(first[0] == 202 and start(db, key) == first, "Duplicate start did not return the same queued run.")
-        check(process_one(db), "The worker did not pick up the rehearsal.")
+        check(process_one(db, simulation_seed=1), "The worker did not pick up the rehearsal.")
     with psycopg.connect(dsn, autocommit=True, row_factory=dict_row) as restarted:
         check(process_one(restarted) and not process_one(restarted), "The worker did not finish once after restart.")
         status, blocked, _ = start(restarted, "new-key")

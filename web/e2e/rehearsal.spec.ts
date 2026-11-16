@@ -53,7 +53,7 @@ test('approves and rehearses a canary, then blocks a separate approved wave afte
     await snap('approved-wave');
     await page.getByRole('button', { name: 'Start wave 1', exact: true }).click();
     await expect(page.getByText('State: queued', { exact: true })).toBeVisible();
-    control('fleet.worker', '--once');
+    control('fleet.worker', '--once', '--seed', '1');
     control('fleet.worker', '--once');
     await page.getByRole('button', { name: 'Refresh run' }).click();
     await expect(page.getByText('State: succeeded', { exact: true })).toBeVisible();

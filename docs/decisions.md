@@ -1,6 +1,6 @@
 # Decision record
 
-Use a shared startup guard with a deadline- and reachability-aware planner. Scheduling can reduce rejected starts and device-hours of exposure. The guard provides admission safety for either schedule. Retain Kafka to ingest independently produced link and probe readings and replay them through one projector. PostgreSQL holds the applied evidence and rehearsal state.
+Use a shared wave-start guard with a deadline- and reachability-aware planner. Scheduling can reduce rejected starts and device-hours of exposure. The guard provides admission safety for either schedule. Retain Kafka to ingest independently produced link and probe readings and replay them through one projector. PostgreSQL holds the applied evidence and rehearsal state.
 
 ## Planner measurement
 
