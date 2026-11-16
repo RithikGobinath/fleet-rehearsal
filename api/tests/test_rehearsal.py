@@ -71,11 +71,11 @@ class RehearsalTests(unittest.TestCase):
                                        ("demo-northstar", "operator"))])
         return scope, f"/v1/tenants/{tenant}/sites/harbor"
 
-    def import_fixed_peer(self, path):
+    def import_asset(self, path, asset="harbor-02", finding="unaffected", revision=2):
         status, result, _ = call(f"{path}/inventory/import", self.tokens["demo-northstar"], {"rows": [{
-            "id": "harbor-02", "name": "Harbor access switch 02", "product": "Catalyst 9300",
-            "running_release": "lab-fixed", "release_status": "unaffected", "trunk_port": True,
-            "trustsec": False, "macsec": False, "observed_at": "2026-11-10T18:30:00Z", "source_revision": 2,
+            "id": asset, "name": "Harbor access switch", "product": "Catalyst 9300",
+            "running_release": f"lab-{finding}", "release_status": finding, "trunk_port": True,
+            "trustsec": False, "macsec": False, "observed_at": "2026-11-10T18:30:00Z", "source_revision": revision,
         }]})
         self.assertEqual((status, result), (200, {"accepted": 1}))
 
@@ -130,7 +130,7 @@ class RehearsalTests(unittest.TestCase):
         unapproved = self.preview(path, name="awaiting-approval")
         approved = self.preview(path)
         self.approve(path, approved)
-        self.import_fixed_peer(path)
+        self.import_asset(path)
         status, error, _ = call(f"{path}/plans/awaiting-approval/revisions/1/approval", self.tokens["demo-approver"],
                                  {"expected_fingerprint": unapproved["fingerprint"]})
         self.assertEqual((status, error["code"]), (409, "inventory_changed"))
@@ -139,8 +139,34 @@ class RehearsalTests(unittest.TestCase):
         fresh = self.preview(path, base=1)
         self.assertNotEqual(fresh["inventory_fingerprint"], approved["inventory_fingerprint"])
         self.assertEqual([wave["device_ids"] for wave in fresh["waves"]], [["harbor-01"]])
-        self.assertIn({"asset_id": "harbor-02", "reason": "advisory_unaffected"}, fresh["deferred"])
+        self.assertNotIn("harbor-02", [item["asset_id"] for item in fresh["deferred"]])
         self.approve(path, fresh)
+
+    def test_import_adds_affected_candidate_and_requires_topology(self):
+        scope, path = self.make_site()
+        with connect() as db:
+            db.execute("DELETE FROM assets WHERE (tenant_id,site_id,id)=(%s,%s,'harbor-02')", scope)
+        old = self.preview(path)
+        self.assertEqual([wave["device_ids"] for wave in old["waves"]], [["harbor-01"]])
+        self.approve(path, old)
+
+        self.import_asset(path, finding="affected")
+        self.import_asset(path, asset="harbor-unmapped", finding="affected")
+        self.assertEqual(self.start(path, old)[1]["code"], "inventory_changed")
+        plan = self.preview(path, base=1)
+        self.assertEqual([wave["device_ids"] for wave in plan["waves"]], [["harbor-01"], ["harbor-02"]])
+        self.assertIn({"asset_id": "harbor-unmapped", "reason": "missing_evidence"}, plan["deferred"])
+        self.approve(path, plan)
+        self.assertEqual(self.start(path, plan)[0], 202)
+        self.work()
+        self.work()
+        with connect() as db:
+            apply_scenario(db, scope, "healthy-next")
+        self.assertEqual(self.start(path, plan, number=2)[0], 202)
+        self.work()
+        self.work()
+        self.assertEqual([event["wave_number"] for event in self.events(path)
+                          if event["kind"] == "simulator_started"], [1, 2])
 
     def test_inventory_import_after_reservation_blocks_worker(self):
         _, path = self.make_site()
@@ -148,7 +174,7 @@ class RehearsalTests(unittest.TestCase):
         self.approve(path, plan)
         status, _, location = self.start(path, plan)
         self.assertEqual(status, 202)
-        self.import_fixed_peer(path)
+        self.import_asset(path)
         self.work()
         run = call(location.removeprefix("/api"), self.tokens["demo-approver"])[1]
         self.assertEqual((run["state"], run["reason"], run["devices"]), ("blocked", "inventory_changed", []))

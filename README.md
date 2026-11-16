@@ -8,7 +8,7 @@ Fleet Rehearsal turns advisory findings into proposed maintenance waves and rehe
 docker compose --profile rehearsal --profile events up --build
 ```
 
-Open [the console](http://127.0.0.1:8080). In Harbor's **Rehearsal** panel, preview the plan as **Partner · Harbor**, load and approve that revision as the **Northstar approver**, then load and start it as the **Northstar operator**. Refresh the run to see the modeled upgrade duration, boot outcome and reachability check. The fresh Harbor fixture includes two affected switches, one unaffected switch and one switch with incomplete evidence.
+Open [the console](http://127.0.0.1:8080). In Harbor's **Rehearsal** panel, preview the plan as **Partner · Harbor**, load and approve that revision as the **Northstar approver**, then load and start it as the **Northstar operator**. Refresh the run to see the modeled upgrade duration, boot outcome and reachability check. On a fresh stack, the second wave discovers `harbor-02` through its affected inventory finding and site topology.
 
 To test a lost path, run the following after approval and before starting the first wave of a fresh rehearsal. It updates Harbor's synthetic topology and advances its fixture clock.
 

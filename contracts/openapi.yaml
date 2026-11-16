@@ -448,7 +448,7 @@ components:
         seed:
           type: integer
           minimum: 1
-          description: Plan revision used to seed deterministic device durations and boot outcomes.
+          description: Seed for device durations and boot outcomes. It normally comes from the run ID. Local demo canaries use a fixed seed, and a local one-step run can override it.
         simulated_elapsed_seconds:
           type: integer
           minimum: 1

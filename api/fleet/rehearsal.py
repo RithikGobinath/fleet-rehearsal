@@ -11,7 +11,10 @@ from uuid import uuid4
 from fastapi import HTTPException
 from psycopg.types.json import Jsonb
 
-from fleet.planner import normalize_snapshot, plan_waves, validate_wave, validate_wave_policy
+from fleet.planner import (
+    INVALID_CONFIGURATION, MISSING_EVIDENCE, inventory_policy, normalize_snapshot,
+    plan_waves, validate_wave, validate_wave_policy,
+)
 from fleet.simulation import finish_simulation, start_simulation
 
 request_correlation = ContextVar("request_correlation", default=None)
@@ -126,14 +129,10 @@ def candidate_inventory(db, scope, policy):
     rows = db.execute(
         """SELECT e.id,e.finding,a.source_revision FROM inventory_evidence e
            JOIN assets a ON (a.tenant_id,a.id)=(e.tenant_id,e.id)
-           WHERE (e.tenant_id,e.site_id)=(%s,%s) AND e.id=ANY(%s)""",
+           WHERE (e.tenant_id,e.site_id)=(%s,%s) AND (e.id=ANY(%s) OR e.finding='affected')""",
         (*scope, [candidate["id"] for candidate in policy["candidates"]]),
     ).fetchall()
     return {row["id"]: {"finding": row["finding"], "source_revision": row["source_revision"]} for row in rows}
-
-
-def inventory_changed(db, scope, policy, document):
-    return document.get("inventory_fingerprint") != fingerprint(candidate_inventory(db, scope, policy))
 
 
 def preview_plan(db, scope, actor, plan, base, correlation):
@@ -141,18 +140,13 @@ def preview_plan(db, scope, actor, plan, base, correlation):
     if base != current:
         stale(current)
     state = site_state(db, scope)
-    policy = state["policy"]
-    inventory = candidate_inventory(db, scope, policy)
-    excluded = {}
-    candidates = []
-    for candidate in policy["candidates"]:
-        asset = candidate["id"]
-        finding = inventory.get(asset, {}).get("finding")
-        if finding != "affected":
-            excluded[asset] = "advisory_unaffected" if finding == "unaffected" else "advisory_evidence_missing"
-            candidate = {**candidate, "eligible": False}
-        candidates.append(candidate)
-    result = plan_waves(state["graph"], {**policy, "candidates": candidates}, stamp(state["clock_at"]))
+    inventory = candidate_inventory(db, scope, state["policy"])
+    policy, excluded = inventory_policy(state["policy"], inventory, state["graph"])
+    result = plan_waves(state["graph"], policy, stamp(state["clock_at"]))
+    deferred = {row["id"]: row["reason"] for row in result["deferred"]}
+    for asset, reason in excluded.items():
+        if deferred.get(asset) != INVALID_CONFIGURATION:
+            deferred[asset] = reason
     revision = current + 1
     document = {
         "plan_id": plan, "revision": revision, "snapshot_revision": state["snapshot_revision"],
@@ -160,9 +154,7 @@ def preview_plan(db, scope, actor, plan, base, correlation):
         "inventory_fingerprint": fingerprint(inventory),
         "protected_services": sorted(state["graph"]["services"]),
         "waves": [dict(wave, wave_number=index) for index, wave in enumerate(result["waves"], 1)],
-        "deferred": [{"asset_id": item["id"], "reason": excluded.get(item["id"], item["reason"])
-                      if item["reason"] != "invalid_configuration" else item["reason"]}
-                     for item in result["deferred"]],
+        "deferred": [{"asset_id": asset, "reason": reason} for asset, reason in deferred.items()],
     }
     document["fingerprint"] = fingerprint([*scope, document])
     document["approval"] = None
@@ -188,7 +180,7 @@ def approve_plan(db, scope, actor, plan, revision, expected, correlation):
     state = site_state(db, scope)
     if state["policy_revision"] != document["policy_revision"]:
         fail(409, "policy_changed", "Preview the plan again with the current maintenance policy.")
-    if inventory_changed(db, scope, state["policy"], document):
+    if document.get("inventory_fingerprint") != fingerprint(candidate_inventory(db, scope, state["policy"])):
         fail(409, "inventory_changed", "Preview the plan again with the current inventory evidence.")
     audit = write_audit(db, scope, actor, correlation, "plan_approved", plan_id=plan, revision=revision,
                         snapshot_revision=document["snapshot_revision"])
@@ -229,7 +221,8 @@ def guard_reason(db, scope, state, document, number):
         return "stale_revision"
     if state["policy_revision"] != document["policy_revision"]:
         return "policy_changed"
-    if inventory_changed(db, scope, state["policy"], document):
+    inventory = candidate_inventory(db, scope, state["policy"])
+    if document.get("inventory_fingerprint") != fingerprint(inventory):
         return "inventory_changed"
     if not datetime.fromisoformat(wave["starts_at"]) <= now < datetime.fromisoformat(wave["ends_at"]):
         return "outside_window"
@@ -243,7 +236,10 @@ def guard_reason(db, scope, state, document, number):
     if not set(range(1, number)).issubset(row["wave_number"] for row in previous):
         return "prerequisite_incomplete"
     succeeded = {item["asset_id"] for row in previous for item in row["devices"] if item["outcome"] == "succeeded"}
-    return validate_wave_policy(state["policy"], wave, succeeded) or validate_wave(state["graph"], wave, stamp(now))["reason"]
+    policy, deferred = inventory_policy(state["policy"], inventory, state["graph"])
+    if any(deferred.get(asset) == MISSING_EVIDENCE for asset in wave["device_ids"]):
+        return MISSING_EVIDENCE
+    return validate_wave_policy(policy, wave, succeeded) or validate_wave(state["graph"], wave, stamp(now))["reason"]
 
 
 def run_body(row):
@@ -345,7 +341,7 @@ def audit_page(db, scope, after, limit):
                       "kind": row["kind"]} for row in rows[:limit]], "next_cursor": cursor}
 
 
-def process_one(db, *, simulation_seed=None):
+def process_one(db, *, simulation_seed=None, canary_seed=None):
     """Commit at most one synthetic step while holding the site's reservation lock."""
     with db.transaction():
         site = db.execute(
@@ -371,7 +367,9 @@ def process_one(db, *, simulation_seed=None):
         audit_key = (db, scope, row["actor_id"], row["correlation_id"])
         coordinates = (row["plan_id"], row["revision"], row["wave_number"])
         run = row["run_id"]
-        seed = 1 + int(run[-8:], 16) if simulation_seed is None else simulation_seed
+        seed = simulation_seed
+        if seed is None:
+            seed = canary_seed if wave["canary"] and canary_seed is not None else 1 + int(run[-8:], 16)
         if row["state"] == "queued":
             grant = db.execute(
                 """SELECT 1 FROM grants WHERE (tenant_id,site_id,principal_id)=(%s,%s,%s)

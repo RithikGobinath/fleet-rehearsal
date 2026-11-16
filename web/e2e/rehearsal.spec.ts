@@ -24,6 +24,7 @@ async function approve(page: Page, planId: string): Promise<void> {
   await page.getByRole('button', { name: 'Create preview' }).click();
   await expect(page.getByRole('heading', { name: `Plan ${planId} · revision 1` })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Wave 1 · Canary' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Wave 2', exact: true })).toBeVisible();
   await expect(page.getByText('harbor-03 · advisory_evidence_missing', { exact: true })).toBeVisible();
   await expect(page.getByText('harbor-04 · advisory_unaffected', { exact: true })).toBeVisible();
   await role(page, 'demo-approver', 'customer approver');
@@ -53,9 +54,11 @@ test('approves and rehearses a canary, then blocks a separate approved wave afte
     await snap('approved-wave');
     await page.getByRole('button', { name: 'Start wave 1', exact: true }).click();
     await expect(page.getByText('State: queued', { exact: true })).toBeVisible();
-    control('fleet.worker', '--once', '--seed', '1');
     control('fleet.worker', '--once');
+    control('fleet.worker', '--once');
+    const run = page.waitForResponse(response => response.url().includes(scope + '/runs/') && response.ok());
     await page.getByRole('button', { name: 'Refresh run' }).click();
+    expect((await (await run).json()).verification.seed).toBe(1);
     await expect(page.getByText('State: succeeded', { exact: true })).toBeVisible();
     await expect(page.getByText('harbor-01 · succeeded', { exact: true })).toBeVisible();
     await expect(page.getByText(/modeled seconds · Boot passed/)).toBeVisible();
