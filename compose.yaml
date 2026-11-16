@@ -104,6 +104,11 @@ services:
   observation-projector:
     <<: *observation_worker
     command: ["python", "-m", "fleet.event_worker", "project"]
+    environment:
+      DATABASE_URL: postgresql://fleet@db:5432/fleet
+      FLEET_DEMO_MODE: local
+      FLEET_KAFKA_BOOTSTRAP: kafka:9092
+      FLEET_SYNTHETIC_STREAM_SCOPE: northstar/harbor
 volumes:
   fleet-db:
   fleet-kafka:

@@ -10,7 +10,7 @@ from pathlib import Path
 
 SHOTS = (
     ("approved-wave", "Review and approve", "The Harbor partner proposes a canary. A separate approver authorizes the same revision."),
-    ("passing-wave", "Complete the canary", "With both uplinks healthy, the Northstar operator starts one successful synthetic run."),
+    ("passing-wave", "Complete the canary", "The simulator records upgrade duration, boot outcome and service reachability before marking the Harbor canary successful."),
     ("pending-observation", "Stop while evidence is pending",
      "The peer fails after approval. The operator's start is denied while Kafka projection is pending."),
     ("blocked-wave", "Keep the wave blocked", "The projected outage removes the alternate path. The audit records both denials and the blocked plan has zero simulator starts."),
@@ -54,14 +54,18 @@ def render(screenshots, reports):
                      f'alt="{escape(title)} in the Fleet Rehearsal console"></div></details></section>')
 
     metrics = (
-        ("HTTP response p95", f'{float(api["p95_response_ms"]):.1f} ms at {float(api["observed_requests_per_second"]):g} req/s'),
+        ("HTTP p95 from scheduled start", f'{float(api["p95_from_scheduled_start_ms"]):.1f} ms'),
         ("Kafka deliveries", f'{int(replay["kafka_records"]):,}'),
         ("Duplicate deliveries", f'{int(replay["duplicate_records"]):,}'),
         ("Logical starts in replay test", int(replay["simulator_starts"])),
-        ("Synthetic planner sites", int(planner["sites_per_seed"]) * len(planner["runs"])),
+        ("Generated planner cases", int(planner["sites_per_seed"]) * len(planner["runs"])),
     )
-    timing = ("The measured workload met the latency target." if api["target_met"] else
-              "The latency target was missed or the request pacing was inconclusive. See the raw report.")
+    if not api["valid_workload"]:
+        timing = "Request dispatch timing made the target comparison inconclusive."
+    elif api["target_met"]:
+        timing = "This run met the 300 ms reference target."
+    else:
+        timing = "This run missed the 300 ms reference target."
     stats = "".join(f'<p class="metric"><strong>{escape(str(value))}</strong>{escape(label)}</p>'
                     for label, value in metrics)
     nav = "".join(f'<a href="#{name}">{escape(title)}</a>' for name, title, _ in SHOTS)
@@ -71,7 +75,9 @@ def render(screenshots, reports):
 <body><main><header><h1>Fleet Rehearsal</h1><p>Synthetic Harbor maintenance on a disposable local stack.</p>
 <code>{sha}</code></header><nav aria-label="Walkthrough steps">{nav}</nav>
 {''.join(cards)}<section><h2>Measured workload</h2><div class="metrics">{stats}</div><p>{timing}</p>
-<p>Loopback HTTP and test broker evidence from GitHub Actions.</p></section></main></body></html>"""
+<p>GitHub Actions measured {int(api["requests_succeeded"])} authenticated inventory page reads at {int(api["requests_per_second"])}
+scheduled requests per second over loopback. The client rotated through four cursor positions on a 10,000-asset fixture.</p>
+<p>Planner cases reuse one topology template. Both schedules use the same runtime guard.</p></section></main></body></html>"""
 
 
 if __name__ == "__main__":

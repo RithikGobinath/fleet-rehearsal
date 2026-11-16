@@ -1,17 +1,21 @@
 import hashlib
 import json
+import re
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, StrictBool, field_validator
+from fastapi import HTTPException
 from psycopg.types.json import Jsonb
+from pydantic import BaseModel, Field, StrictBool, ValidationError, field_validator, model_validator
 
 from fleet.rehearsal import fail, site_state, stamp
 
 TOPIC = "fleet-observations-v1"
 MAX_MESSAGE = 16 * 1024
+IDENTIFIER_PATTERN = r"[a-z0-9][a-z0-9-]{0,63}"
+Identifier = Annotated[str, Field(pattern=rf"^{IDENTIFIER_PATTERN}$")]
 
 
 class HealthEvidence(BaseModel):
@@ -23,7 +27,7 @@ class ObservationRequest(BaseModel):
     model_config = {"extra": "forbid"}
     schema_version: Literal[1]
     event_id: UUID
-    asset_id: Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9-]{0,63}$")]
+    asset_id: Identifier
     source_id: Literal["synthetic-health"]
     source_revision: Annotated[int, Field(strict=True, ge=1, le=9007199254740991)]
     observed_at: datetime
@@ -40,7 +44,54 @@ class ObservationRequest(BaseModel):
         return moment
 
 
-def accept(db, scope, event):
+class LinkEvidence(BaseModel):
+    model_config = {"extra": "forbid"}
+    carrier_up: StrictBool
+
+
+class ProbeEvidence(BaseModel):
+    model_config = {"extra": "forbid"}
+    sent: Annotated[int, Field(strict=True, ge=1, le=100)]
+    received: Annotated[int, Field(strict=True, ge=0, le=100)]
+
+    @model_validator(mode="after")
+    def check_counts(self):
+        if self.received > self.sent:
+            raise ValueError("Received probes cannot exceed sent probes.")
+        return self
+
+
+class SourceObservation(ObservationRequest):
+    tenant_id: Identifier
+    site_id: Identifier
+
+
+class LinkObservation(SourceObservation):
+    source_id: Literal["synthetic-link"]
+    evidence: LinkEvidence
+
+
+class ProbeObservation(SourceObservation):
+    source_id: Literal["synthetic-probe"]
+    evidence: ProbeEvidence
+
+
+LINK_TOPIC = "fleet-link-observations-v1"
+PROBE_TOPIC = "fleet-probe-observations-v1"
+SOURCE_TOPICS = {LINK_TOPIC: LinkObservation, PROBE_TOPIC: ProbeObservation}
+
+
+def synthetic_stream_scope(env):
+    value = env.get("FLEET_SYNTHETIC_STREAM_SCOPE")
+    if value is None:
+        return None
+    if env.get("FLEET_DEMO_MODE") != "local" or not re.fullmatch(rf"{IDENTIFIER_PATTERN}/{IDENTIFIER_PATTERN}", value):
+        raise RuntimeError("Set FLEET_SYNTHETIC_STREAM_SCOPE=tenant/site only in the local synthetic demo.")
+    tenant, site = value.split("/")
+    return tenant, site
+
+
+def accept(db, scope, event, *, published=False):
     tenant, site = scope
     now = datetime.now(timezone.utc)
     if event.observed_at > now:
@@ -63,9 +114,10 @@ def accept(db, scope, event):
         return receipt["body"]
     payload["received_at"] = stamp(now)
     inserted = db.execute(
-        """INSERT INTO observation_events (tenant_id,event_id,site_id,asset_id,source_id,source_revision,body)
-           VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING RETURNING event_id""",
-        (tenant, event.event_id, site, event.asset_id, event.source_id, event.source_revision, Jsonb(payload)),
+        """INSERT INTO observation_events (tenant_id,event_id,site_id,asset_id,source_id,source_revision,body,published_at)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,CASE WHEN %s THEN now() END)
+           ON CONFLICT DO NOTHING RETURNING event_id""",
+        (tenant, event.event_id, site, event.asset_id, event.source_id, event.source_revision, Jsonb(payload), published),
     ).fetchone()
     if inserted is None:
         fail(409, "observation_conflict", "The observation ID or source revision is already in use.")
@@ -84,15 +136,20 @@ def partition_key(event):
 
 
 def relay_one(db, publish):
+    return relay_batch(db, lambda messages: publish(*messages[0]), limit=1)
+
+
+def relay_batch(db, publish, limit=32):
     with db.transaction():
-        event = db.execute("""SELECT tenant_id,event_id,body FROM observation_events WHERE published_at IS NULL
-                              ORDER BY ordinal LIMIT 1 FOR UPDATE SKIP LOCKED""").fetchone()
-        if not event:
+        events = db.execute("""SELECT tenant_id,event_id,body FROM observation_events WHERE published_at IS NULL
+                               ORDER BY ordinal LIMIT %s FOR UPDATE SKIP LOCKED""", (limit,)).fetchall()
+        if not events:
             return False
-        payload = event["body"]
-        publish(partition_key(payload), json.dumps(payload, sort_keys=True, separators=(",", ":")).encode())
-        db.execute("UPDATE observation_events SET published_at=now() WHERE (tenant_id,event_id)=(%s,%s)",
-                   (event["tenant_id"], event["event_id"]))
+        publish([(partition_key(row["body"]),
+                  json.dumps(row["body"], sort_keys=True, separators=(",", ":")).encode()) for row in events])
+        with db.cursor() as cur:
+            cur.executemany("UPDATE observation_events SET published_at=now() WHERE (tenant_id,event_id)=(%s,%s)",
+                            [(row["tenant_id"], row["event_id"]) for row in events])
         return True
 
 
@@ -106,7 +163,43 @@ def _quarantine(db, broker, raw, row=None):
     )
 
 
-def project_message(db, key, raw, broker):
+def _record_source(db, key, body, topic, scope):
+    if scope is None:
+        return None
+    try:
+        event = SOURCE_TOPICS[topic].model_validate(body)
+        if (event.tenant_id, event.site_id) != scope or key != partition_key(body):
+            return None
+        if not db.execute("SELECT 1 FROM sites WHERE (tenant_id,id)=(%s,%s) FOR UPDATE", scope).fetchone():
+            return None
+        return accept(db, scope, event, published=True)
+    except (HTTPException, ValidationError):
+        return None
+
+
+def _device_health(db, scope, asset_id):
+    readings = db.execute(
+        """SELECT e.source_id, e.body
+           FROM observation_watermarks w JOIN observation_events e
+           ON (e.tenant_id,e.site_id,e.asset_id,e.source_id,e.source_revision)=
+              (w.tenant_id,w.site_id,w.asset_id,w.source_id,w.applied)
+           WHERE (w.tenant_id,w.site_id,w.asset_id)=(%s,%s,%s)""",
+        (*scope, asset_id),
+    ).fetchall()
+    healthy = True
+    for reading in readings:
+        evidence = reading["body"]["evidence"]
+        if reading["source_id"] == "synthetic-link":
+            healthy &= evidence["carrier_up"]
+        elif reading["source_id"] == "synthetic-probe":
+            healthy &= evidence["received"] == evidence["sent"]
+        else:
+            healthy &= evidence["healthy"]
+    oldest = min(datetime.fromisoformat(r["body"]["observed_at"]) for r in readings)
+    return {"healthy": healthy, "observed_at": stamp(oldest)}
+
+
+def project_message(db, key, raw, broker, *, source_scope=None):
     """Commit projection or sanitized quarantine before the broker offset can advance."""
     raw = raw or b""
     with db.transaction():
@@ -118,39 +211,47 @@ def project_message(db, key, raw, broker):
         except (ValueError, KeyError, TypeError, AttributeError):
             _quarantine(db, broker, raw)
             return False
-        row = db.execute(
-            "SELECT * FROM observation_events WHERE (tenant_id,event_id)=(%s,%s)", (body["tenant_id"], event_id),
-        ).fetchone()
-        if not row:
-            _quarantine(db, broker, raw)
-            return False
-        scope = (row["tenant_id"], row["site_id"])
-        db.execute("SELECT 1 FROM sites WHERE (tenant_id,id)=(%s,%s) FOR UPDATE", scope)
-        if key != partition_key(row["body"]) or json.dumps(body, sort_keys=True) != json.dumps(row["body"], sort_keys=True):
-            _quarantine(db, broker, raw, row if key == partition_key(row["body"]) else None)
-            return False
-        watermark = (*scope, row["asset_id"], row["source_id"])
+        if broker[0] in SOURCE_TOPICS:
+            body = _record_source(db, key, body, broker[0], source_scope)
+            if body is None:
+                _quarantine(db, broker, raw)
+                return False
+        else:
+            row = db.execute(
+                "SELECT tenant_id,site_id,event_id,body FROM observation_events WHERE (tenant_id,event_id)=(%s,%s)",
+                (body["tenant_id"], event_id),
+            ).fetchone()
+            if not row:
+                _quarantine(db, broker, raw)
+                return False
+            db.execute("SELECT 1 FROM sites WHERE (tenant_id,id)=(%s,%s) FOR UPDATE", (row["tenant_id"], row["site_id"]))
+            matched_key = key == partition_key(row["body"])
+            if not matched_key or json.dumps(body, sort_keys=True) != json.dumps(row["body"], sort_keys=True):
+                _quarantine(db, broker, raw, row if matched_key else None)
+                return False
+            body = row["body"]
+        scope = (body["tenant_id"], body["site_id"])
+        watermark = (*scope, body["asset_id"], body["source_id"])
         applied = db.execute(
             """SELECT applied FROM observation_watermarks
                WHERE (tenant_id,site_id,asset_id,source_id)=(%s,%s,%s,%s)""", watermark,
         ).fetchone()["applied"]
-        if row["source_revision"] > applied:
+        if body["source_revision"] > applied:
             state = site_state(db, scope)
             graph = deepcopy(state["graph"])
             revision = state["snapshot_revision"] + 1
             graph["revision"] = revision
-            graph["devices"][row["asset_id"]].update(**row["body"]["evidence"], observed_at=row["body"]["observed_at"])
+            db.execute("""UPDATE observation_watermarks SET applied=%s
+                          WHERE (tenant_id,site_id,asset_id,source_id)=(%s,%s,%s,%s)""",
+                       (body["source_revision"], *watermark))
+            graph["devices"][body["asset_id"]].update(_device_health(db, scope, body["asset_id"]))
             db.execute("INSERT INTO rehearsal_snapshots VALUES (%s,%s,%s,%s)", (*scope, revision, Jsonb(graph)))
             db.execute("UPDATE rehearsal_sites SET snapshot_revision=%s WHERE (tenant_id,site_id)=(%s,%s)",
                        (revision, *scope))
-            db.execute("""UPDATE observation_watermarks SET applied=%s
-                          WHERE (tenant_id,site_id,asset_id,source_id)=(%s,%s,%s,%s)""",
-                       (row["source_revision"], *watermark))
         db.execute("""UPDATE observation_events SET processed_at=COALESCE(processed_at,now())
-                      WHERE (tenant_id,event_id)=(%s,%s)""", (row["tenant_id"], row["event_id"]))
+                      WHERE (tenant_id,event_id)=(%s,%s)""", (scope[0], event_id))
         db.execute("""UPDATE observation_quarantine SET repaired_at=now()
-                      WHERE (tenant_id,site_id,event_id)=(%s,%s,%s) AND repaired_at IS NULL""",
-                   (*scope, row["event_id"]))
+                      WHERE (tenant_id,site_id,event_id)=(%s,%s,%s) AND repaired_at IS NULL""", (*scope, event_id))
         return True
 
 

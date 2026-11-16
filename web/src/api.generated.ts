@@ -270,7 +270,7 @@ export interface paths {
         put?: never;
         /**
          * Approve the exact current revision
-         * @description Requires an assigned customer approver different from the proposer. A superseded revision or fingerprint mismatch is a stale_revision conflict.
+         * @description Requires an assigned customer approver different from the proposer. A superseded revision or fingerprint mismatch is a stale_revision conflict. A change in candidate inventory requires a new preview.
          */
         post: operations["approvePlanRevision"];
         delete?: never;
@@ -296,7 +296,7 @@ export interface paths {
         put?: never;
         /**
          * Revalidate and reserve one simulated wave
-         * @description Requires a site operator, the exact approval, and fresh applied evidence. A block before reservation commits audit evidence without creating a run. A later block is visible on the queued run.
+         * @description Requires a site operator, the exact approval, unchanged candidate inventory, and fresh applied health evidence. A block before reservation commits audit evidence without creating a run. A later block is visible on the queued run.
          */
         post: operations["startRehearsal"];
         delete?: never;
@@ -358,7 +358,7 @@ export interface components {
         /** Format: date-time */
         Time: string;
         /** @enum {string} */
-        Reason: "invalid_configuration" | "invalid_wave" | "missing_evidence" | "stale_candidate" | "down_candidate" | "alternate_path_unavailable" | "not_eligible" | "deadline_missed" | "no_window_before_deadline" | "canary_not_scheduled" | "pending_evidence" | "site_busy" | "policy_changed" | "stale_revision" | "authorization_revoked" | "outside_window" | "prerequisite_incomplete" | "already_rehearsed" | "verification_failed";
+        Reason: "invalid_configuration" | "invalid_wave" | "missing_evidence" | "stale_candidate" | "down_candidate" | "alternate_path_unavailable" | "advisory_unaffected" | "advisory_evidence_missing" | "not_eligible" | "deadline_missed" | "no_window_before_deadline" | "canary_not_scheduled" | "pending_evidence" | "site_busy" | "policy_changed" | "inventory_changed" | "stale_revision" | "authorization_revoked" | "outside_window" | "prerequisite_incomplete" | "already_rehearsed" | "verification_failed";
         Error: {
             code: components["schemas"]["Reason"] | ("unauthenticated" | "forbidden" | "not_found" | "invalid_request" | "invalid_plan_state" | "idempotency_conflict");
             detail: string;
@@ -378,6 +378,8 @@ export interface components {
             revision: number;
             snapshot_revision: number;
             policy_revision: number;
+            /** @description Digest of scoped candidate findings and inventory source revisions. Absent on legacy revisions, which must be re-previewed. */
+            inventory_fingerprint?: components["schemas"]["Fingerprint"];
             fingerprint: components["schemas"]["Fingerprint"];
             protected_services?: components["schemas"]["Id"][];
             waves: components["schemas"]["Wave"][];
@@ -405,11 +407,30 @@ export interface components {
             state: "queued" | "blocked" | "running" | "succeeded" | "paused" | "partial_failure" | "rolled_back" | "failed";
             reason?: components["schemas"]["Reason"];
             audit_id?: components["schemas"]["Id"];
+            verification?: components["schemas"]["RunVerification"];
             devices: {
                 asset_id: components["schemas"]["Id"];
                 /** @enum {unknown} */
                 outcome: "succeeded" | "failed" | "rolled_back" | "skipped";
+                /** @description Modeled upgrade duration in seconds. */
+                upgrade_seconds?: number;
+                /** @description Outcome of the modeled boot before rollback. */
+                boot_succeeded?: boolean;
             }[];
+        };
+        RunVerification: {
+            /** @description Plan revision used to seed deterministic device durations and boot outcomes. */
+            seed: number;
+            /** @description Time for the longest device upgrade in the modeled wave. */
+            simulated_elapsed_seconds: number;
+            /** @description Modeled time when service paths were checked. */
+            verified_at: components["schemas"]["Time"];
+            /** @description Latest applied snapshot used to verify service paths. */
+            snapshot_revision: number;
+            unavailable_devices: components["schemas"]["Id"][];
+            unreachable_services: components["schemas"]["Id"][];
+            /** @description Unreachable services after a modeled rollback, when one was attempted. */
+            rollback_unreachable_services?: components["schemas"]["Id"][];
         };
         AuditPage: {
             next_cursor: string | null;
@@ -429,6 +450,10 @@ export interface components {
             wave_number?: number;
             run_id?: components["schemas"]["Id"];
             snapshot_revision?: number;
+            simulation_seed?: number;
+            simulated_start_at?: components["schemas"]["Time"];
+            failure_fixture?: boolean;
+            verification?: components["schemas"]["RunVerification"];
         };
         /** AuthConfig */
         AuthConfig: {

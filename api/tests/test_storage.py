@@ -118,7 +118,7 @@ class StorageTests(unittest.TestCase):
 
             initialize_inventory(conn, SEED)
             assets, versions = read_state()
-            self.assertEqual(len(assets), 5)
+            self.assertEqual(len(assets), 6)
             self.assertEqual([row[0] for row in versions], list(range(1, len(MIGRATIONS) + 1)))
             self.assertEqual(assets[0][2], "Existing device")
             self.assertIsNone(assets[0][3]["trustsec"])
@@ -162,5 +162,5 @@ class StorageTests(unittest.TestCase):
             plan = conn.execute("EXPLAIN (ANALYZE, FORMAT JSON) " + INVENTORY_PAGE_SQL, params).fetchone()[0]
             self.assertIn('"Index Name": "assets_by_site"', json.dumps(plan))
             total, rows = conn.execute(INVENTORY_PAGE_SQL, params).fetchone()
-            self.assertEqual(total, 3)
+            self.assertEqual(total, 4)
             self.assertEqual([row["id"] for row in rows], ["harbor-02", "harbor-03"])

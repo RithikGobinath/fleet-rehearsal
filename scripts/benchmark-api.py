@@ -1,4 +1,4 @@
-"""Measure the authenticated first inventory page against a disposable PostgreSQL database."""
+"""Measure authenticated cursor pagination against disposable PostgreSQL."""
 
 import argparse
 from collections import Counter
@@ -29,7 +29,7 @@ RATE = 25
 WARMUP_SECONDS = 5
 TARGET_MS = 300
 PAGE = "/v1/assets?tenant_id=benchmark&limit=25"
-FIRST_PAGE = [f"asset-{n:05}" for n in range(25)]
+PAGE_OFFSETS = (0, 25, 2_500, 7_500)
 
 
 def write_fixture(path):
@@ -112,19 +112,21 @@ def session_token(port):
         connection.close()
 
 
-def request_page(port, token):
+def request_page(port, token, offset):
+    path = f"{PAGE}&after=asset-{offset - 1:05}" if offset else PAGE
+    expected = [f"asset-{n:05}" for n in range(offset, offset + 25)]
     start = perf_counter()
     connection = HTTPConnection("127.0.0.1", port, timeout=5)
     try:
-        connection.request("GET", PAGE, headers={"Authorization": f"Bearer {token}"})
+        connection.request("GET", path, headers={"Authorization": f"Bearer {token}"})
         response = connection.getresponse()
         body = response.read()
         elapsed = (perf_counter() - start) * 1000
         if response.status != 200:
             return None, start, f"HTTP {response.status}"
         payload = json.loads(body)
-        if (payload["total"] != ASSETS or payload["next_cursor"] != FIRST_PAGE[-1]
-                or [item["id"] for item in payload["items"]] != FIRST_PAGE):
+        if (payload["total"] != ASSETS or payload["next_cursor"] != expected[-1]
+                or [item["id"] for item in payload["items"]] != expected):
             return None, start, "Unexpected inventory page"
         return elapsed, start, None
     except (OSError, HTTPException, ValueError, KeyError, TypeError) as error:
@@ -140,7 +142,8 @@ def measure(port, token, seconds):
         for index in range(RATE * seconds):
             scheduled = epoch + index / RATE
             sleep(max(0, scheduled - perf_counter()))
-            samples.append((scheduled, pool.submit(request_page, port, token)))
+            offset = PAGE_OFFSETS[index % len(PAGE_OFFSETS)]
+            samples.append((scheduled, pool.submit(request_page, port, token, offset)))
         sleep(max(0, epoch + seconds - perf_counter()))
         return [(target, *sample.result()) for target, sample in samples]
 
@@ -189,6 +192,7 @@ def benchmark(admin_dsn, seconds, source):
         "scope": "Synthetic operator with all 10 sites in one tenant",
         "assets": ASSETS,
         "endpoint": PAGE,
+        "page_offsets_round_robin": PAGE_OFFSETS,
         "requests_per_second": RATE,
         "warmup_seconds": WARMUP_SECONDS,
         "measurement_seconds": seconds,

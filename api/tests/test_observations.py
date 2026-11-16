@@ -11,7 +11,7 @@ from psycopg.types.json import Jsonb
 
 import test_rehearsal as api
 from fleet.event_worker import consume_one, ensure_topic, new_consumer, publish_to
-from fleet.observations import TOPIC, project_message, relay_one
+from fleet.observations import LINK_TOPIC, PROBE_TOPIC, TOPIC, partition_key, project_message, relay_one
 from fleet.rehearsal import site_state
 
 
@@ -55,6 +55,76 @@ class ObservationTests(unittest.TestCase):
     def snapshot(self):
         with api.connect() as db:
             return site_state(db, self.scope)["snapshot_revision"]
+
+    def source_event(self, source, revision, observed_at, **evidence):
+        return {"schema_version": 1, "event_id": str(uuid4()), "tenant_id": self.scope[0], "site_id": self.scope[1],
+                "asset_id": "harbor-02", "source_id": f"synthetic-{source}", "source_revision": revision,
+                "observed_at": observed_at, "evidence": evidence}
+
+    def assert_peer(self, revision, healthy, observed_at):
+        with api.connect() as db:
+            state = site_state(db, self.scope)
+        peer = state["graph"]["devices"]["harbor-02"]
+        self.assertEqual((state["snapshot_revision"], peer["healthy"], peer["observed_at"]),
+                         (revision, healthy, observed_at))
+
+    def test_source_messages_are_topic_and_scope_bound(self):
+        probe = self.source_event("probe", 1, "2026-11-10T18:59:30Z", sent=4, received=4)
+        bad_counts = {**probe, "evidence": {"sent": 4, "received": 5}}
+        foreign_tenant = {**probe, "tenant_id": "northstar"}
+        foreign_site = {**probe, "site_id": "remote"}
+        examples = (
+            (LINK_TOPIC, partition_key(probe), probe, self.scope),
+            (PROBE_TOPIC, partition_key(probe), bad_counts, self.scope),
+            (PROBE_TOPIC, partition_key(foreign_tenant), foreign_tenant, self.scope),
+            (PROBE_TOPIC, partition_key(foreign_site), foreign_site, self.scope),
+            (PROBE_TOPIC, b"wrong-key", probe, self.scope),
+            (PROBE_TOPIC, partition_key(probe), probe, None),
+            (TOPIC, partition_key(probe), probe, self.scope),
+        )
+        first_offset = uuid4().int >> 70
+        with api.connect() as db:
+            for offset, (topic, key, body, scope) in enumerate(examples, first_offset):
+                with self.subTest(topic=topic, offset=offset):
+                    self.assertFalse(project_message(db, key, json.dumps(body).encode(), (topic, 0, offset),
+                                                     source_scope=scope))
+            self.assertIsNone(db.execute("SELECT 1 FROM observation_events WHERE event_id=%s",
+                                         (probe["event_id"],)).fetchone())
+            for row in db.execute("""SELECT tenant_id,site_id,event_id,payload_hash FROM observation_quarantine
+                                     WHERE message_offset >= %s AND message_offset < %s""",
+                                  (first_offset, first_offset + len(examples))).fetchall():
+                self.assertEqual((row["tenant_id"], row["site_id"], row["event_id"]), (None, None, None))
+                self.assertEqual(len(row["payload_hash"]), 64)
+        self.assert_peer(1, True, "2026-11-10T18:59:00Z")
+
+    def test_source_fusion_has_independent_watermarks(self):
+        down = self.source_event("link", 7, "2026-11-10T18:59:30Z", carrier_up=False)
+        probe = self.source_event("probe", 2, "2026-11-10T18:59:45Z", sent=4, received=4)
+        older_up = self.source_event("link", 6, "2026-11-10T18:59:55Z", carrier_up=True)
+        recovered = self.source_event("link", 8, "2026-11-10T18:59:50Z", carrier_up=True)
+        degraded = self.source_event("probe", 3, "2026-11-10T18:59:55Z", sent=4, received=3)
+        cases = (
+            (LINK_TOPIC, down, (2, False, down["observed_at"])),
+            (PROBE_TOPIC, probe, (3, False, down["observed_at"])),
+            (LINK_TOPIC, older_up, (3, False, down["observed_at"])),
+            (LINK_TOPIC, down, (3, False, down["observed_at"])),
+            (LINK_TOPIC, recovered, (4, True, probe["observed_at"])),
+            (PROBE_TOPIC, degraded, (5, False, recovered["observed_at"])),
+        )
+        for offset, (topic, body, expected) in enumerate(cases):
+            with api.connect() as db:
+                self.assertTrue(project_message(db, partition_key(body), json.dumps(body).encode(),
+                                                (topic, 0, offset), source_scope=self.scope))
+            self.assert_peer(*expected)
+        with api.connect() as db:
+            rows = db.execute("""SELECT source_id,accepted,applied FROM observation_watermarks
+                                 WHERE (tenant_id,site_id)=(%s,%s) ORDER BY source_id""", self.scope).fetchall()
+            self.assertEqual([(row["source_id"], row["accepted"], row["applied"]) for row in rows],
+                             [("synthetic-link", 8, 8), ("synthetic-probe", 3, 3)])
+            rows = db.execute("""SELECT published_at,processed_at FROM observation_events
+                                 WHERE (tenant_id,site_id)=(%s,%s)""", self.scope).fetchall()
+            self.assertEqual(len(rows), 5)
+            self.assertTrue(all(row["published_at"] and row["processed_at"] for row in rows))
 
     def test_pending_quarantine_replay_and_late_delivery(self):
         plan_path = self.path + "/plans/dispatch/revisions"
@@ -160,5 +230,57 @@ class ObservationTests(unittest.TestCase):
             with api.connect() as db:
                 self.assertTrue(consume_one(db, restarted, timeout=15))
             self.assertEqual(self.snapshot(), 2)
+        finally:
+            restarted.close()
+
+    @unittest.skipUnless(os.environ.get("FLEET_KAFKA_BOOTSTRAP"), "Requires the Compose Kafka broker.")
+    def test_real_broker_stores_independent_readings_before_projection(self):
+        from confluent_kafka import Producer
+
+        bootstrap = os.environ["FLEET_KAFKA_BOOTSTRAP"]
+        topics = (LINK_TOPIC, PROBE_TOPIC)
+        for topic in topics:
+            ensure_topic(bootstrap, topic)
+        producer = Producer({"bootstrap.servers": bootstrap, "enable.idempotence": True})
+        down = self.source_event("link", 4, "2026-11-10T18:59:30Z", carrier_up=False)
+        probe = self.source_event("probe", 4, "2026-11-10T18:59:45Z", sent=4, received=4)
+
+        publish_to(producer, partition_key(down), json.dumps(down).encode(), LINK_TOPIC)
+        with api.connect() as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM observation_events WHERE event_id=%s",
+                                         (down["event_id"],)).fetchone())
+        self.assert_peer(1, True, "2026-11-10T18:59:00Z")
+
+        group = "fleet-test-sources-" + uuid4().hex
+        consumer = new_consumer(bootstrap, group, topics)
+        try:
+            deadline = time.monotonic() + 25
+            while self.snapshot() == 1 and time.monotonic() < deadline:
+                with api.connect() as db:
+                    consume_one(db, consumer, timeout=3, source_scope=self.scope)
+            self.assert_peer(2, False, down["observed_at"])
+
+            publish_to(producer, partition_key(probe), json.dumps(probe).encode(), PROBE_TOPIC)
+            with api.connect() as db:
+                self.assertIsNone(db.execute("SELECT 1 FROM observation_events WHERE event_id=%s",
+                                             (probe["event_id"],)).fetchone())
+
+            def crash():
+                if self.snapshot() == 3:
+                    raise RuntimeError("source projection committed before offset")
+
+            with self.assertRaisesRegex(RuntimeError, "committed before offset"):
+                deadline = time.monotonic() + 25
+                while time.monotonic() < deadline:
+                    with api.connect() as db:
+                        consume_one(db, consumer, timeout=3, before_commit=crash, source_scope=self.scope)
+            self.assert_peer(3, False, down["observed_at"])
+        finally:
+            consumer.close()
+        restarted = new_consumer(bootstrap, group, topics)
+        try:
+            with api.connect() as db:
+                self.assertTrue(consume_one(db, restarted, timeout=15, source_scope=self.scope))
+            self.assert_peer(3, False, down["observed_at"])
         finally:
             restarted.close()

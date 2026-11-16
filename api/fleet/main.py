@@ -4,17 +4,20 @@ import os
 import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
+from functools import partial
 from time import perf_counter
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
 import psycopg
+from anyio import to_thread
 from fastapi import Depends, FastAPI, Header, HTTPException, Path as PathParam, Query, Request
 from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool, PoolTimeout, TooManyRequests
 from pydantic import BaseModel, Field
 
 from fleet.inventory_import import IMPORT_SCHEMA, InventoryBatch, read_inventory_import, store_inventory_import
@@ -83,9 +86,11 @@ class InventoryPage(BaseModel):
 
 
 def get_db(request: Request):
-    settings: LocalSettings | HostedSettings = request.app.state.settings
-    with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
-        yield conn
+    try:
+        with request.app.state.db_pool.connection() as conn:
+            yield conn
+    except (PoolTimeout, TooManyRequests):
+        raise HTTPException(503, "Database connection pool is busy.") from None
 
 
 Database = Annotated[psycopg.Connection, Depends(get_db)]
@@ -95,14 +100,26 @@ Database = Annotated[psycopg.Connection, Depends(get_db)]
 async def lifespan(app: FastAPI):
     settings = runtime_settings(os.environ)
     if isinstance(settings, LocalSettings):
-        migrate(settings.database_url, settings.fixture_path)
-    else:
-        with psycopg.connect(settings.database_url) as db:
-            if not schema_ready(db):
-                raise RuntimeError("Run the release migration job before starting the hosted API.")
+        await to_thread.run_sync(migrate, settings.database_url, settings.fixture_path)
+    pool = ConnectionPool(
+        settings.database_url, kwargs={"row_factory": dict_row, "connect_timeout": 5}, open=False,
+        min_size=2, max_size=8, max_waiting=32, timeout=3,
+    )
     app.state.settings = settings
     app.state.hosted_tokens = HostedTokens(settings) if isinstance(settings, HostedSettings) else None
-    yield
+    app.state.db_pool = pool
+    try:
+        await to_thread.run_sync(partial(pool.open, wait=True, timeout=10))
+        if isinstance(settings, HostedSettings):
+            def check_schema():
+                with pool.connection() as db:
+                    if not schema_ready(db):
+                        raise RuntimeError("Run the release migration job before starting the hosted API.")
+
+            await to_thread.run_sync(check_schema)
+        yield
+    finally:
+        await to_thread.run_sync(pool.close)
 
 
 app = FastAPI(title="Fleet Rehearsal", version="0.1.0", lifespan=lifespan)
@@ -199,8 +216,9 @@ def import_inventory(
     caller: Caller,
     batch: Annotated[InventoryBatch, Depends(read_inventory_import)],
 ) -> dict[str, int]:
-    require_site_role(db, caller, tenant_id, site_id, "operator")
-    return {"accepted": store_inventory_import(db, tenant_id, site_id, batch)}
+    with db.transaction():
+        lock_site_operator(db, caller, (tenant_id, site_id))
+        return {"accepted": store_inventory_import(db, tenant_id, site_id, batch)}
 
 
 SCOPE_PATH = "/v1/tenants/{tenant_id}/sites/{site_id}"
