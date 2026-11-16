@@ -70,9 +70,10 @@ paths:
                     revision: 1
                     snapshot_revision: 1
                     policy_revision: 1
+                    inventory_fingerprint: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
                     fingerprint: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
                     waves: []
-                    deferred: [{asset_id: harbor-01, reason: missing_evidence}]
+                    deferred: [{asset_id: harbor-01, reason: advisory_evidence_missing}]
                     approval: null
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
@@ -111,7 +112,7 @@ paths:
       operationId: approvePlanRevision
       security: [{HTTPBearer: []}]
       summary: Approve the exact current revision
-      description: Requires an assigned customer approver different from the proposer. A superseded revision or fingerprint mismatch is a stale_revision conflict.
+      description: Requires an assigned customer approver different from the proposer. A superseded revision or fingerprint mismatch is a stale_revision conflict. A change in candidate inventory requires a new preview.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody: {$ref: '#/components/requestBodies/ExpectedFingerprint'}
@@ -140,7 +141,7 @@ paths:
       operationId: startRehearsal
       security: [{HTTPBearer: []}]
       summary: Revalidate and reserve one simulated wave
-      description: Requires a site operator, the exact approval, and fresh applied evidence. A block before reservation commits audit evidence without creating a run. A later block is visible on the queued run.
+      description: Requires a site operator, the exact approval, unchanged candidate inventory, and fresh applied health evidence. A block before reservation commits audit evidence without creating a run. A later block is visible on the queued run.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody: {$ref: '#/components/requestBodies/ExpectedFingerprint'}
@@ -335,6 +336,8 @@ components:
         - stale_candidate
         - down_candidate
         - alternate_path_unavailable
+        - advisory_unaffected
+        - advisory_evidence_missing
         - not_eligible
         - deadline_missed
         - no_window_before_deadline
@@ -342,6 +345,7 @@ components:
         - pending_evidence
         - site_busy
         - policy_changed
+        - inventory_changed
         - stale_revision
         - authorization_revoked
         - outside_window
@@ -378,6 +382,10 @@ components:
         revision: {type: integer, minimum: 1}
         snapshot_revision: {type: integer, minimum: 1}
         policy_revision: {type: integer, minimum: 1}
+        inventory_fingerprint:
+          description: Digest of scoped candidate findings and inventory source revisions. Absent on legacy revisions, which must be re-previewed.
+          allOf:
+            - $ref: '#/components/schemas/Fingerprint'
         fingerprint: {$ref: '#/components/schemas/Fingerprint'}
         protected_services: {type: array, items: {$ref: '#/components/schemas/Id'}}
         waves: {type: array, items: {$ref: '#/components/schemas/Wave'}}
@@ -417,6 +425,7 @@ components:
         state: {enum: [queued, blocked, running, succeeded, paused, partial_failure, rolled_back, failed]}
         reason: {$ref: '#/components/schemas/Reason'}
         audit_id: {$ref: '#/components/schemas/Id'}
+        verification: {$ref: '#/components/schemas/RunVerification'}
         devices:
           type: array
           items:
@@ -425,6 +434,42 @@ components:
             properties:
               asset_id: {$ref: '#/components/schemas/Id'}
               outcome: {enum: [succeeded, failed, rolled_back, skipped]}
+              upgrade_seconds:
+                type: integer
+                minimum: 1
+                description: Modeled upgrade duration in seconds.
+              boot_succeeded:
+                type: boolean
+                description: Outcome of the modeled boot before rollback.
+    RunVerification:
+      type: object
+      required: [seed, simulated_elapsed_seconds, verified_at, snapshot_revision, unavailable_devices, unreachable_services]
+      properties:
+        seed:
+          type: integer
+          minimum: 1
+          description: Plan revision used to seed deterministic device durations and boot outcomes.
+        simulated_elapsed_seconds:
+          type: integer
+          minimum: 1
+          description: Time for the longest device upgrade in the modeled wave.
+        verified_at:
+          $ref: '#/components/schemas/Time'
+          description: Modeled time when service paths were checked.
+        snapshot_revision:
+          type: integer
+          minimum: 1
+          description: Latest applied snapshot used to verify service paths.
+        unavailable_devices:
+          type: array
+          items: {$ref: '#/components/schemas/Id'}
+        unreachable_services:
+          type: array
+          items: {$ref: '#/components/schemas/Id'}
+        rollback_unreachable_services:
+          type: array
+          items: {$ref: '#/components/schemas/Id'}
+          description: Unreachable services after a modeled rollback, when one was attempted.
     AuditPage:
       type: object
       required: [items, next_cursor]
@@ -448,6 +493,10 @@ components:
         wave_number: {type: integer, minimum: 1}
         run_id: {$ref: '#/components/schemas/Id'}
         snapshot_revision: {type: integer, minimum: 1}
+        simulation_seed: {type: integer, minimum: 1}
+        simulated_start_at: {$ref: '#/components/schemas/Time'}
+        failure_fixture: {type: boolean}
+        verification: {$ref: '#/components/schemas/RunVerification'}
   examples:
     HealthyPlan:
       value:
@@ -455,11 +504,14 @@ components:
         revision: 1
         snapshot_revision: 1
         policy_revision: 1
+        inventory_fingerprint: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
         fingerprint: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
         waves:
           - {wave_number: 1, device_ids: [harbor-01], starts_at: '2026-11-10T19:00:00Z', ends_at: '2026-11-10T19:05:00Z', canary: true}
           - {wave_number: 2, device_ids: [harbor-02], starts_at: '2026-11-10T19:10:00Z', ends_at: '2026-11-10T19:15:00Z', canary: false}
-        deferred: [{asset_id: harbor-03, reason: missing_evidence}]
+        deferred:
+          - {asset_id: harbor-03, reason: advisory_evidence_missing}
+          - {asset_id: harbor-04, reason: advisory_unaffected}
         approval: null
     StaleRevision:
       value: {code: stale_revision, current_revision: 2, detail: Reload the current plan revision before retrying.}

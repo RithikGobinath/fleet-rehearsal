@@ -1,34 +1,24 @@
-# Architecture and trust boundaries
+# Architecture
 
-Angular calls FastAPI under `/api`. PostgreSQL is the source of truth for inventory, observations, grants, approvals, reservations, and audit records. The planner consumes a snapshot and returns proposed waves and deferrals. A Python worker will rehearse approved revisions. Kafka will deliver observations after the transaction that accepts them commits.
+Angular calls the FastAPI service through the web container. Each API process uses a bounded PostgreSQL pool of 2–8 connections. PostgreSQL stores inventory, site grants, topology and health revisions, plan revisions, runs and audit events. Tenant and site grants control the proposer, approver and operator actions.
 
-| Role | Inventory and evidence | Read plans, runs, and audit | Propose | Approve | Rehearse |
-| --- | --- | --- | --- | --- | --- |
-| Viewer | Granted sites | — | — | — | — |
-| Partner proposer | Granted sites | Granted sites | Granted sites | — | — |
-| Customer approver | Assigned sites in own tenant | Assigned sites in own tenant | — | Exact revision in scope, proposed by another actor | — |
-| Operator | Assigned sites | Assigned sites | — | — | Approved revision in scope |
+## Inventory to rehearsal
 
-Resolve grants for the authenticated actor and the resource's tenant and site on every request. Site IDs are local to a tenant. A role on one site grants no actions on another. Audit rows are appended by the server as part of the recorded action.
+The inventory view applies the feature conditions from Cisco's advisory for CVE-2025-20311. The synthetic import supplies IOS XE release applicability; resolving exact releases against the Cisco Software Checker is outside the demo. A candidate must be affected in the requested site's inventory and enabled by site policy. Unaffected and incomplete records appear as separate deferrals. [Cisco advisory](https://sec.cloudapps.cisco.com/security/center/content/CiscoSecurityAdvisory/cisco-sa-cat9k-PtmD7bgy)
 
-### Entity keys
+The planner schedules one device per wave, starting with a canary, inside maintenance windows and before patch deadlines. Revisions bind the plan to inventory evidence and the policy used at preview. Proposal checks use the preview snapshot. Later waves can outlive that evidence, so approval, reservation and the worker recheck their respective prerequisites. At start, the guard checks current evidence, the window, the canary prerequisite and reachability with the wave devices removed.
 
-| Entity | Key and references |
-| --- | --- |
-| Tenant and site | Tenant uses `tenant_id`. Site uses `(tenant_id, site_id)`. |
-| Asset | `(tenant_id, asset_id)`; references a site in the same tenant. |
-| Advisory revision | `(advisory_id, revision)` identifies immutable public evidence. An asset finding links to the revision used for its evaluation. |
-| Observation | `(tenant_id, event_id)`; references the asset and site. A source revision orders observations for one asset and source. |
-| Topology snapshot | `(tenant_id, site_id, snapshot_revision)`; pins the topology and the applied evidence used to propose a wave. |
-| Plan revision | `(tenant_id, site_id, plan_id, revision)`; immutable record of the snapshot, proposer, policy, and plan fingerprint. |
-| Wave | Plan revision key plus `wave_number`; member assets must belong to the same site. Times use UTC. |
-| Approval | Plan revision key; records the customer approver, fingerprint, and decision time. A new revision needs its own approval. |
-| Rehearsal run | `(tenant_id, site_id, run_id)`; references the exact approved revision and wave and records the revalidation evidence. |
-| Audit event | `(tenant_id, site_id, audit_id)`; records actor, outcome, and any affected revision, wave, run, and evidence references. A blocked start can have audit evidence without a simulator start. |
+The worker freezes seed-derived durations of 45–120 modeled seconds and a 10% boot-failure draw per device in the run. A later worker tick evaluates the modeled completion against current applied topology and health. It traces each protected service to a healthy uplink and records unavailable devices and isolated services. On failure, the model tests whether restoring the previous image restores service. These are graph probes running on a simulated clock. Harbor is the only seeded rehearsal site.
 
-For example, `northstar/harbor` can have plan `dispatch` revision 1, wave 1, for asset `northstar/harbor-01`. The partner with a Harbor grant can propose that revision. A Northstar approver with a Harbor grant can approve it; a River-only approver cannot. A later Harbor observation can block the operator's start without altering the approved revision.
+## Observation inputs
 
-- Codex owns the HTTP contract, shared fixtures, storage, orchestration, and release work. Claude Code owns the pure planner and its independent validation. Antigravity owns the console and browser tests.
-- The Compose demo binds the browser to loopback and issues short-lived local bearer tokens for seeded identities. Grants are checked against database state on every read. The demo identity endpoint requires explicit local mode.
-- Wave starts will revalidate freshness and the approved revision, then acquire the site reservation in the same transaction as the simulated start. An accepted observation that is still pending projection blocks a start.
-- Keep production release credentials in GitHub's release identity. Agents use local worktrees and synthetic data. Hosted user authentication is a separate release requirement.
+The local Kafka projector accepts independently produced link-carrier and active-probe readings on separate topics. Each source orders its readings by revision. The projector combines the latest known readings, with a down result overriding an up result and the older timestamp bounding combined freshness. The HTTP observation endpoint also publishes accepted events via a PostgreSQL outbox. Accepted, unprojected HTTP evidence blocks starts. Direct stream readings affect the guard once committed to the database; a record still waiting in Kafka is invisible to it.
+
+On a fresh Harbor fixture, run both commands with the events profile active. The healthy probe reading cannot clear the carrier outage. Reload the rehearsal panel to see the resulting decision. Send a link reading with revision `2`, `--carrier up` and timestamp `2026-11-10T18:59:50Z` to clear the outage.
+
+```sh
+docker compose exec -T observation-projector python -m fleet.observation_source link harbor-02 1 --carrier down --observed-at 2026-11-10T18:59:30Z
+docker compose exec -T observation-projector python -m fleet.observation_source probe harbor-02 1 --sent 4 --received 4 --observed-at 2026-11-10T18:59:45Z
+```
+
+These producers send directly to Kafka and need no database credentials. The local projector scopes these topics to the synthetic `northstar/harbor` fixture. The hosted configuration uses the authenticated HTTP observation boundary.

@@ -46,7 +46,7 @@ class InventoryTests(unittest.TestCase):
         token = self.tokens["demo-partner"]
         status, page = request("/v1/assets?tenant_id=northstar", token=token)
         self.assertEqual(status, 200)
-        self.assertEqual(page["total"], 3)
+        self.assertEqual(page["total"], 4)
         self.assertEqual({row["site_id"] for row in page["items"]}, {"harbor"})
         self.assertEqual(request("/v1/assets/river-01?tenant_id=northstar", token=token)[0], 404)
         self.assertEqual(request("/v1/assets?tenant_id=summit", token=token)[0], 403)
@@ -61,17 +61,17 @@ class InventoryTests(unittest.TestCase):
 
     def test_findings_and_advisory_evidence(self):
         token = self.tokens["demo-partner"]
-        for finding, asset_id in (
-            ("affected", "harbor-01"),
-            ("unaffected", "harbor-02"),
-            ("needs_evidence", "harbor-03"),
+        for finding, asset_ids in (
+            ("affected", ["harbor-01", "harbor-02"]),
+            ("unaffected", ["harbor-04"]),
+            ("needs_evidence", ["harbor-03"]),
         ):
             with self.subTest(finding=finding):
                 status, page = request(f"/v1/assets?tenant_id=northstar&finding={finding}", token=token)
                 self.assertEqual(status, 200)
-                self.assertEqual(page["total"], 1)
-                self.assertEqual([row["id"] for row in page["items"]], [asset_id])
-                status, detail = request(f"/v1/assets/{asset_id}?tenant_id=northstar", token=token)
+                self.assertEqual(page["total"], len(asset_ids))
+                self.assertEqual([row["id"] for row in page["items"]], asset_ids)
+                status, detail = request(f"/v1/assets/{asset_ids[0]}?tenant_id=northstar", token=token)
                 self.assertEqual(status, 200)
                 self.assertEqual(detail["finding"], finding)
                 self.assertEqual(detail["advisory_id"], "CVE-2025-20311")
@@ -82,10 +82,12 @@ class InventoryTests(unittest.TestCase):
         token = self.tokens["demo-northstar"]
         _, first = request("/v1/assets?tenant_id=northstar&limit=2", token=token)
         _, second = request(f"/v1/assets?tenant_id=northstar&limit=2&after={first['next_cursor']}", token=token)
+        _, third = request(f"/v1/assets?tenant_id=northstar&limit=2&after={second['next_cursor']}", token=token)
         self.assertEqual(first["total"], second["total"])
-        self.assertEqual(first["total"], 4)
-        self.assertIsNone(second["next_cursor"])
-        self.assertEqual([row["id"] for row in first["items"] + second["items"]], ["harbor-01", "harbor-02", "harbor-03", "river-01"])
+        self.assertEqual(first["total"], 5)
+        self.assertIsNone(third["next_cursor"])
+        self.assertEqual([row["id"] for row in first["items"] + second["items"] + third["items"]],
+                         ["harbor-01", "harbor-02", "harbor-03", "harbor-04", "river-01"])
 
     def test_import_is_scoped_atomic_and_repeatable(self):
         path = "/v1/tenants/northstar/sites/harbor/inventory/import"

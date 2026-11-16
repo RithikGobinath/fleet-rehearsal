@@ -1,3 +1,5 @@
+from bisect import bisect_left
+from itertools import accumulate
 from threading import Lock
 
 from psycopg import Connection
@@ -9,18 +11,19 @@ from fleet.planner import (
 BLOCK_REASONS = frozenset({
     ALTERNATE_PATH_UNAVAILABLE, DOWN_CANDIDATE, MISSING_EVIDENCE, STALE_CANDIDATE, "pending_evidence",
     "authorization_revoked", "outside_window", "site_busy", "prerequisite_incomplete", "stale_revision",
-    "policy_changed", "already_rehearsed",
+    "policy_changed", "inventory_changed", "already_rehearsed",
 })
 _latency_lock = Lock()
-_latency = {"2xx": [0, 0.0], "4xx": [0, 0.0], "5xx": [0, 0.0], "other": [0, 0.0]}
+_buckets = (0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.3, 0.5, 1, 2, 5)
+_latency = {outcome: [0.0, [0] * (len(_buckets) + 1)] for outcome in ("2xx", "4xx", "5xx", "other")}
 
 
 def observe_request(status: int, elapsed: float) -> None:
     outcome = f"{status // 100}xx"
     with _latency_lock:
         sample = _latency.get(outcome, _latency["other"])
-        sample[0] += 1
-        sample[1] += elapsed
+        sample[0] += elapsed
+        sample[1][bisect_left(_buckets, elapsed)] += 1
 
 
 def render_metrics(db: Connection) -> str:
@@ -33,11 +36,14 @@ def render_metrics(db: Connection) -> str:
         "# TYPE fleet_rehearsal_failed_verifications_total counter",
         "# TYPE fleet_worker_heartbeat_age_seconds gauge",
     ]
-    lines.append("# TYPE fleet_http_request_duration_seconds summary")
+    lines.append("# TYPE fleet_http_request_duration_seconds histogram")
     with _latency_lock:
-        for outcome, (count, seconds) in _latency.items():
-            lines.append(f'fleet_http_request_duration_seconds_count{{outcome="{outcome}"}} {count}')
-            lines.append(f'fleet_http_request_duration_seconds_sum{{outcome="{outcome}"}} {seconds:.6f}')
+        for outcome, (seconds, buckets) in _latency.items():
+            metric = "fleet_http_request_duration_seconds"
+            for bound, count in zip((*_buckets, "+Inf"), accumulate(buckets), strict=True):
+                lines.append(f'{metric}_bucket{{outcome="{outcome}",le="{bound}"}} {count}')
+            lines.append(f'{metric}_count{{outcome="{outcome}"}} {sum(buckets)}')
+            lines.append(f'{metric}_sum{{outcome="{outcome}"}} {seconds:.6f}')
     observations = db.execute("""
         SELECT count(*) FILTER (WHERE published_at IS NULL) AS unpublished,
                count(*) FILTER (WHERE processed_at IS NULL) AS unapplied,

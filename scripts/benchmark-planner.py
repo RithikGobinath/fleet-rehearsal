@@ -1,4 +1,4 @@
-"""Compare the actual planner with severity-first on reproducible synthetic fleets."""
+"""Compare two canary-first schedules through the same production wave validators."""
 
 import argparse
 import json
@@ -10,6 +10,8 @@ from fleet.planner import plan_waves, validate_wave, validate_wave_policy
 
 
 DURATION, MAX_AGE, HORIZON = 5, 150, 180
+CASES_PER_SEED = 6
+PLANNERS = ("severity_with_canary", "fleet_rehearsal")
 WINDOWS = ((0, 35), (45, 80), (120, 170))
 BLACKOUT = (12, 20)
 EPOCH = datetime(2025, 1, 1, tzinfo=timezone.utc)
@@ -24,18 +26,17 @@ def interval(start, end):
 
 
 def workload(seed):
-    rng = random.Random(seed)
-    for n in range(6):
+    for n in range(CASES_PER_SEED):
+        rng = random.Random(f"{seed}:{n}")
         devices = {"canary": dict(priority=0, deadline=35, affected=True, eligible=True, observed=-1)}
         pairs = [(f"link-{i}-a", f"link-{i}-b") for i in range(3)]
         for left, right in pairs:
             for name in (left, right):
                 devices[name] = dict(priority=rng.randint(1, 5), deadline=rng.choice([35, 80, 170]),
-                                     affected=rng.random() < 0.8, eligible=rng.random() < 0.9, observed=-1)
-        devices["link-0-a"].update(affected=False)
-        devices["link-0-b"].update(affected=True, eligible=True, priority=5, deadline=35)
-        devices["link-1-a"].update(affected=True, eligible=True, observed=-151)
-        yield f"site-{n}", devices, pairs, ("link-0-a", 1 + rng.randrange(4))
+                                     affected=rng.random() < 0.8, eligible=rng.random() < 0.9,
+                                     observed=-rng.randrange(161))
+        outage = (rng.choice([link for pair in pairs for link in pair]), rng.randrange(1, 36)) if rng.random() < 0.5 else None
+        yield f"site-{n}", devices, pairs, outage
 
 
 def fits(start, deadline):
@@ -44,11 +45,12 @@ def fits(start, deadline):
             and (end <= BLACKOUT[0] or start >= BLACKOUT[1]))
 
 
-def baseline(devices, canary_first=False):
+def baseline(devices):
     cursor, waves, missed = 0, [], {}
     for name, device in sorted(devices.items(), key=lambda item: (
-            canary_first and item[0] != "canary", -item[1]["priority"], item[1]["deadline"], item[0])):
+            item[0] != "canary", -item[1]["priority"], item[1]["deadline"], item[0])):
         if not device["affected"] or not device["eligible"]:
+            missed[name] = "not_eligible"
             continue
         start = next((minute for minute in range(cursor, device["deadline"]) if fits(minute, device["deadline"])), None)
         if start is None:
@@ -80,9 +82,11 @@ def policy(devices):
                            for name, device in sorted(devices.items())]}
 
 
-def oracle(devices, pairs, name, at, outage):
+def expected_refusal(devices, pairs, name, at, outage):
+    """Cross-check the shared policy for the benchmark's redundant pairs."""
     down = outage[0] if outage and at >= outage[1] else None
-    if at - devices[name]["observed"] > MAX_AGE:
+    last_observed = outage[1] if name == down else devices[name]["observed"]
+    if at - last_observed > MAX_AGE:
         return "stale_candidate"
     if name == down:
         return "down_candidate"
@@ -94,27 +98,30 @@ def oracle(devices, pairs, name, at, outage):
 
 def evaluate(site, devices, pairs, outage, waves, deferred):
     guard_policy, proposed, completed = policy(devices), set(), {}
-    result, reasons = Counter(), Counter(deferred.values())
+    result, blocks, proposals = Counter(), Counter(), Counter()
     cursor = 0
     for name, start in waves:
         end = start + DURATION
         device = devices[name]
         assert name not in proposed and start >= cursor and fits(start, device["deadline"])
         assert device["affected"] and device["eligible"]
-        if oracle(devices, pairs, name, 0, None) or (name != "canary" and "canary" not in proposed):
-            result["invalid_proposals"] += 1
+        assert name == "canary" or "canary" in proposed
+        preview_reason = expected_refusal(devices, pairs, name, 0, None)
+        if preview_reason:
+            result["proposals_rejected_at_preview"] += 1
+            proposals[preview_reason] += 1
         proposed.add(name)
         cursor = end
         wave = {**interval(start, end), "device_ids": [name]}
-        runtime = snapshot(site, devices, pairs, outage if start >= outage[1] else None)
+        runtime = snapshot(site, devices, pairs, outage if outage and start >= outage[1] else None)
         actual = validate_wave_policy(guard_policy, wave, completed) or validate_wave(runtime, wave, stamp(start))["reason"]
         expected = ("prerequisite_incomplete" if name != "canary" and "canary" not in completed
-                    else oracle(devices, pairs, name, start, outage))
+                    else expected_refusal(devices, pairs, name, start, outage))
         if expected:
             result["unsafe_start_attempts"] += 1
         if actual:
             result["blocked_starts"] += 1
-            reasons[actual] += 1
+            blocks[actual] += 1
         if expected and not actual:
             result["unsafe_starts_admitted"] += 1
         assert actual == expected, (site, name, start, actual, expected)
@@ -126,7 +133,7 @@ def evaluate(site, devices, pairs, outage, waves, deferred):
     result["eligible_affected_devices"] = sum(device["affected"] and device["eligible"] for device in devices.values())
     result["affected_device_minutes"] = sum(completed.get(name, HORIZON)
                                             for name, device in devices.items() if device["affected"])
-    return result, reasons
+    return result, proposals, blocks, Counter(deferred.values())
 
 
 def main():
@@ -137,30 +144,29 @@ def main():
     for seed in seeds:
         initial = list(workload(seed))
         assert initial == list(workload(seed))
-        totals = {name: (Counter(), Counter()) for name in ("severity_first", "severity_with_canary", "fleet_rehearsal")}
+        totals = {name: (Counter(), Counter(), Counter(), Counter()) for name in PLANNERS}
         for site, devices, pairs, outage in initial:
-            assert oracle(devices, pairs, "link-0-b", 0, None) is None
-            assert oracle(devices, pairs, "link-0-b", outage[1], outage) == "alternate_path_unavailable"
             plan = plan_waves(snapshot(site, devices, pairs), policy(devices), stamp(0))
             aware = [(wave["device_ids"][0], int((datetime.fromisoformat(wave["starts_at"]) - EPOCH).total_seconds() / 60))
                      for wave in plan["waves"]]
-            for label, (waves, deferred) in (("severity_first", baseline(devices)),
-                    ("severity_with_canary", baseline(devices, canary_first=True)),
+            for label, (waves, deferred) in (("severity_with_canary", baseline(devices)),
                     ("fleet_rehearsal", (aware, {row["id"]: row["reason"] for row in plan["deferred"]}))):
-                metrics, reasons = evaluate(site, devices, pairs, outage, waves, deferred)
-                totals[label][0].update(metrics)
-                totals[label][1].update(reasons)
+                for total, counts in zip(totals[label], evaluate(site, devices, pairs, outage, waves, deferred), strict=True):
+                    total.update(counts)
         row = {"seed": seed}
-        for name, (totals_by_metric, reasons) in totals.items():
-            for key in ("invalid_proposals", "unsafe_start_attempts", "blocked_starts", "unsafe_starts_admitted"):
+        for name, (totals_by_metric, proposals, blocks, deferred) in totals.items():
+            for key in ("proposals_rejected_at_preview", "unsafe_start_attempts", "blocked_starts", "unsafe_starts_admitted"):
                 totals_by_metric.setdefault(key, 0)
+            assert totals_by_metric["unsafe_starts_admitted"] == 0
             row[name] = {**totals_by_metric, "affected_device_hours": round(totals_by_metric["affected_device_minutes"] / 60, 3),
-                         "deferral_and_block_reasons": reasons}
-        assert row["fleet_rehearsal"]["unsafe_starts_admitted"] == 0
-        assert row["fleet_rehearsal"]["invalid_proposals"] == 0
-        assert row["fleet_rehearsal"]["finished_by_deadline"] > 0
+                         "preview_refusal_reasons": proposals, "blocked_start_reasons": blocks, "deferral_reasons": deferred}
+        assert row["fleet_rehearsal"]["proposals_rejected_at_preview"] == 0
         results.append(row)
-    print(json.dumps({"sites_per_seed": 6, "assets_per_site": 7, "horizon_minutes": HORIZON, "runs": results}, indent=2))
+    print(json.dumps({
+        "sites_per_seed": CASES_PER_SEED, "candidates_per_site": 7, "horizon_minutes": HORIZON,
+        "workload": "One topology template. Seeded link observation ages (0–160 minutes) and optional outages.",
+        "runs": results,
+    }, indent=2))
 
 
 if __name__ == "__main__":

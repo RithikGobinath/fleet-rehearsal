@@ -12,6 +12,7 @@ from fastapi import HTTPException
 from psycopg.types.json import Jsonb
 
 from fleet.planner import normalize_snapshot, plan_waves, validate_wave, validate_wave_policy
+from fleet.simulation import finish_simulation, start_simulation
 
 request_correlation = ContextVar("request_correlation", default=None)
 
@@ -121,19 +122,47 @@ def read_plan(db, scope, plan, revision):
     return {**row["document"], "approval": approval_body(approval) if approval else None}, row["proposer"]
 
 
+def candidate_inventory(db, scope, policy):
+    rows = db.execute(
+        """SELECT e.id,e.finding,a.source_revision FROM inventory_evidence e
+           JOIN assets a ON (a.tenant_id,a.id)=(e.tenant_id,e.id)
+           WHERE (e.tenant_id,e.site_id)=(%s,%s) AND e.id=ANY(%s)""",
+        (*scope, [candidate["id"] for candidate in policy["candidates"]]),
+    ).fetchall()
+    return {row["id"]: {"finding": row["finding"], "source_revision": row["source_revision"]} for row in rows}
+
+
+def inventory_changed(db, scope, policy, document):
+    return document.get("inventory_fingerprint") != fingerprint(candidate_inventory(db, scope, policy))
+
+
 def preview_plan(db, scope, actor, plan, base, correlation):
     current = latest_revision(db, scope, plan)
     if base != current:
         stale(current)
     state = site_state(db, scope)
-    result = plan_waves(state["graph"], state["policy"], stamp(state["clock_at"]))
+    policy = state["policy"]
+    inventory = candidate_inventory(db, scope, policy)
+    excluded = {}
+    candidates = []
+    for candidate in policy["candidates"]:
+        asset = candidate["id"]
+        finding = inventory.get(asset, {}).get("finding")
+        if finding != "affected":
+            excluded[asset] = "advisory_unaffected" if finding == "unaffected" else "advisory_evidence_missing"
+            candidate = {**candidate, "eligible": False}
+        candidates.append(candidate)
+    result = plan_waves(state["graph"], {**policy, "candidates": candidates}, stamp(state["clock_at"]))
     revision = current + 1
     document = {
         "plan_id": plan, "revision": revision, "snapshot_revision": state["snapshot_revision"],
         "policy_revision": state["policy_revision"],
+        "inventory_fingerprint": fingerprint(inventory),
         "protected_services": sorted(state["graph"]["services"]),
         "waves": [dict(wave, wave_number=index) for index, wave in enumerate(result["waves"], 1)],
-        "deferred": [{"asset_id": item["id"], "reason": item["reason"]} for item in result["deferred"]],
+        "deferred": [{"asset_id": item["id"], "reason": excluded.get(item["id"], item["reason"])
+                      if item["reason"] != "invalid_configuration" else item["reason"]}
+                     for item in result["deferred"]],
     }
     document["fingerprint"] = fingerprint([*scope, document])
     document["approval"] = None
@@ -156,6 +185,11 @@ def approve_plan(db, scope, actor, plan, revision, expected, correlation):
         fail(403, "forbidden", "A proposer cannot approve their own revision.")
     if document["approval"] or not document["waves"]:
         fail(409, "invalid_plan_state", "This revision cannot be approved.")
+    state = site_state(db, scope)
+    if state["policy_revision"] != document["policy_revision"]:
+        fail(409, "policy_changed", "Preview the plan again with the current maintenance policy.")
+    if inventory_changed(db, scope, state["policy"], document):
+        fail(409, "inventory_changed", "Preview the plan again with the current inventory evidence.")
     audit = write_audit(db, scope, actor, correlation, "plan_approved", plan_id=plan, revision=revision,
                         snapshot_revision=document["snapshot_revision"])
     row = db.execute(
@@ -195,6 +229,8 @@ def guard_reason(db, scope, state, document, number):
         return "stale_revision"
     if state["policy_revision"] != document["policy_revision"]:
         return "policy_changed"
+    if inventory_changed(db, scope, state["policy"], document):
+        return "inventory_changed"
     if not datetime.fromisoformat(wave["starts_at"]) <= now < datetime.fromisoformat(wave["ends_at"]):
         return "outside_window"
     if pending_evidence(db, scope, state["graph"], wave):
@@ -217,6 +253,8 @@ def run_body(row):
         body["reason"] = row["reason"]
     if row["audit_id"]:
         body["audit_id"] = f"audit-{row['audit_id']}"
+    if row["simulation"] and "verification" in row["simulation"]:
+        body["verification"] = row["simulation"]["verification"]
     return body
 
 
@@ -336,18 +374,29 @@ def process_one(db):
             if reason:
                 block_reserved(db, scope, row, state["snapshot_revision"], reason)
             else:
-                db.execute("""UPDATE rehearsal_runs SET state='running',started_at=now(),snapshot_revision=%s
+                simulation = start_simulation(wave, state["clock_at"], row["revision"],
+                                              state["graph"]["services"], state["fail_canary"])
+                db.execute("""UPDATE rehearsal_runs SET state='running',started_at=now(),snapshot_revision=%s,simulation=%s
                               WHERE (tenant_id,site_id,run_id)=(%s,%s,%s) AND state='queued'""",
-                           (state["snapshot_revision"], *scope, run))
-                audit_wave(*audit_key, "simulator_started", *coordinates, state["snapshot_revision"], run_id=run)
+                           (state["snapshot_revision"], Jsonb(simulation), *scope, run))
+                audit_wave(*audit_key, "simulator_started", *coordinates, state["snapshot_revision"], run_id=run,
+                           simulation_seed=simulation["seed"], simulated_start_at=simulation["simulated_start_at"],
+                           failure_fixture=simulation["failure_fixture"])
         else:
-            failed = wave["canary"] and state["fail_canary"]
-            outcome = "rolled_back" if failed else "succeeded"
-            reason = "verification_failed" if failed else None
+            simulation = row["simulation"]
+            if simulation is None:
+                # An already-running wave from before migration 009 has no persisted draw.
+                graph = db.execute("""SELECT graph FROM rehearsal_snapshots
+                                      WHERE (tenant_id,site_id,revision)=(%s,%s,%s)""",
+                                   (*scope, row["snapshot_revision"])).fetchone()["graph"]
+                simulation = start_simulation(wave, datetime.fromisoformat(wave["starts_at"]),
+                                              row["revision"], graph["services"], state["fail_canary"])
+            outcome, devices, verification = finish_simulation(simulation, state["graph"],
+                                                               state["snapshot_revision"], state["clock_at"])
+            reason = None if outcome == "succeeded" else "verification_failed"
             audit = audit_wave(*audit_key, "run_updated", *coordinates, row["snapshot_revision"],
-                               run_id=run, **({"reason": reason} if reason else {}))
-            devices = [{"asset_id": asset, "outcome": outcome} for asset in wave["device_ids"]]
-            db.execute("""UPDATE rehearsal_runs SET state=%s,reason=%s,devices=%s,audit_id=%s
+                               run_id=run, verification=verification, **({"reason": reason} if reason else {}))
+            db.execute("""UPDATE rehearsal_runs SET state=%s,reason=%s,devices=%s,audit_id=%s,simulation=%s
                           WHERE (tenant_id,site_id,run_id)=(%s,%s,%s) AND state='running'""",
-                       (outcome, reason, Jsonb(devices), audit, *scope, run))
+                       (outcome, reason, Jsonb(devices), audit, Jsonb(dict(simulation, verification=verification)), *scope, run))
         return True

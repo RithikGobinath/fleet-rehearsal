@@ -46,7 +46,7 @@ class HostedBoundaryTests(unittest.TestCase):
             authorized = headers(token())
             self.assertEqual(client.get("/v1/auth/profile", headers=authorized).json()["id"], "demo-partner")
             visible = client.get("/v1/assets?tenant_id=northstar&limit=1", headers=authorized).json()
-            self.assertEqual(visible["total"], 3)
+            self.assertEqual(visible["total"], 4)
             for path in (
                 f"/v1/assets?tenant_id=summit&after={visible['next_cursor']}",
                 "/v1/assets/ridge-01?tenant_id=summit",

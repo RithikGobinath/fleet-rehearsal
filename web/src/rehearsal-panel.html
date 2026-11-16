@@ -71,8 +71,22 @@
       </p>
       @if (currentRun.reason) { <p>{{ currentRun.reason }} · {{ currentRun.audit_id }}</p> }
       <ul>@for (device of currentRun.devices; track device.asset_id) {
-        <li>{{ device.asset_id }} · {{ device.outcome }}</li>
+        <li>
+          <span>{{ device.asset_id }} · {{ device.outcome }}</span>
+          @if (device.upgrade_seconds !== undefined) {
+            <p>{{ device.upgrade_seconds }} modeled seconds · {{ device.boot_succeeded ? 'Boot passed' : 'Boot failed' }}</p>
+          }
+        </li>
       }</ul>
+      @if (currentRun.verification; as verification) {
+        <p>Service reachability at topology revision {{ verification.snapshot_revision }}:
+          @if (verification.unreachable_services.length) { Unreachable: {{ verification.unreachable_services.join(', ') }} }
+          @else { All protected services reachable }
+        </p>
+        @if (verification.rollback_unreachable_services; as remaining) {
+          <p>After rollback: {{ remaining.length ? remaining.join(', ') + ' still unreachable' : 'All protected services reachable' }}</p>
+        }
+      }
       <button class="btn btn-secondary" type="button" [disabled]="busy()" (click)="refreshRun()">Refresh run</button>
     </article>
   }

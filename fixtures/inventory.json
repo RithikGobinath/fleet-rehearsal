@@ -9,8 +9,9 @@
   ],
   "assets": [
     ["northstar", "harbor-01", "harbor", "Harbor access switch 01", "Catalyst 9300", "lab-affected", "affected", true, false, false, "2026-11-10T18:00:00Z"],
-    ["northstar", "harbor-02", "harbor", "Harbor access switch 02", "Catalyst 9300", "lab-fixed", "unaffected", true, false, false, "2026-11-10T18:00:00Z"],
+    ["northstar", "harbor-02", "harbor", "Harbor access switch 02", "Catalyst 9300", "lab-affected", "affected", true, false, false, "2026-11-10T18:00:00Z"],
     ["northstar", "harbor-03", "harbor", "Harbor access switch 03", "Catalyst 9300", "lab-affected", "affected", null, false, false, "2026-11-10T18:00:00Z"],
+    ["northstar", "harbor-04", "harbor", "Harbor access switch 04", "Catalyst 9300", "lab-fixed", "unaffected", true, false, false, "2026-11-10T18:00:00Z"],
     ["northstar", "river-01", "river", "River distribution switch 01", "Catalyst 9300", "lab-affected", "affected", false, true, false, "2026-11-10T18:10:00Z"],
     ["summit", "ridge-01", "ridge", "Ridge access switch 01", "Catalyst 9300", "lab-affected", "affected", false, false, false, "2026-11-10T18:20:00Z"]
   ]
