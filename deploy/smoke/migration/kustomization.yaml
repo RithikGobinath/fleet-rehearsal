@@ -4,3 +4,10 @@ resources: [../../migration]
 images:
   - name: fleet-api
     newTag: smoke
+# PostgreSQL can be ready before its Service accepts traffic.
+patches:
+  - target: {kind: Job, name: fleet-migrate}
+    patch: |-
+      - op: replace
+        path: /spec/backoffLimit
+        value: 2
