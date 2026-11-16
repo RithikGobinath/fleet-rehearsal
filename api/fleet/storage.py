@@ -10,7 +10,6 @@ MIGRATIONS = (
     "004_inventory_revision.sql", "005_rehearsal.sql", "006_observations.sql",
     "007_hosted_identity.sql",
     "008_worker_heartbeat.sql",
-    "009_rehearsal_simulation.sql",
 )
 EVIDENCE_FIELDS = ("running_release", "release_status", "trunk_port", "trustsec", "macsec", "observed_at")
 INVENTORY_PAGE_SQL = """WITH visible AS MATERIALIZED (

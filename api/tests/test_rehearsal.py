@@ -276,11 +276,12 @@ class RehearsalTests(unittest.TestCase):
         self.assertEqual(call(run_path, operator)[1]["state"], "running")
         with connect() as db:
             verified_revision = apply_scenario(db, scope, "peer-down")
-        self.work()
+        self.work(seed=2)
         result = call(run_path, operator)[1]
         self.assertEqual((result["state"], result["snapshot_revision"]), ("rolled_back", started_revision))
         self.assertFalse(result["devices"][0]["boot_succeeded"])
         evidence = result["verification"]
+        self.assertEqual(evidence["seed"], 1)
         self.assertEqual(evidence["simulated_elapsed_seconds"], result["devices"][0]["upgrade_seconds"])
         self.assertEqual(evidence["snapshot_revision"], verified_revision)
         self.assertEqual(evidence["unreachable_services"], ["dispatch"])
@@ -289,4 +290,5 @@ class RehearsalTests(unittest.TestCase):
         starts = [event for event in events if event["kind"] == "simulator_started"]
         self.assertEqual(len(starts), 1)
         self.assertTrue(starts[0]["failure_fixture"])
+        self.assertNotIn("simulation", starts[0])
         self.assertEqual(events[-1]["verification"], evidence)

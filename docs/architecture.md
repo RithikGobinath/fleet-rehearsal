@@ -8,7 +8,7 @@ The inventory view applies the feature conditions from Cisco's advisory for CVE-
 
 The planner schedules one device per wave, starting with a canary, inside maintenance windows and before patch deadlines. Revisions bind the plan to inventory evidence and the policy used at preview. Proposal checks use the preview snapshot. Later waves can outlive that evidence, so approval, reservation and the worker recheck their respective prerequisites. At start, the guard checks current evidence, the window, the canary prerequisite and reachability with the wave devices removed.
 
-The worker seeds each run from its ID and freezes per-device draws for durations of 45–120 modeled seconds and a 10% boot-failure chance. A later worker tick evaluates the modeled completion against current applied topology and health. It traces each protected service to a healthy uplink and records unavailable devices and isolated services. On failure, the model tests whether restoring the previous image restores service. These are graph probes running on a simulated clock. Harbor is the only seeded rehearsal site.
+The worker seeds each run from its ID and saves per-device draws in the start audit record so a restart can resume the same simulation. The draws cover durations of 45–120 modeled seconds and a 10% boot-failure chance. A later worker tick evaluates the modeled completion against current applied topology and health. It traces each protected service to a healthy uplink and records unavailable devices and isolated services. On failure, the model tests whether restoring the previous image restores service. These are graph probes running on a simulated clock. Harbor is the only seeded rehearsal site.
 
 ## Observation inputs
 

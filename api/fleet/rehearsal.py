@@ -251,16 +251,20 @@ def run_body(row):
             "snapshot_revision", "state", "devices")}
     if row["reason"]:
         body["reason"] = row["reason"]
-    if row["audit_id"]:
+    if row["audit_id"] and row["state"] != "running":
         body["audit_id"] = f"audit-{row['audit_id']}"
-    if row["simulation"] and "verification" in row["simulation"]:
-        body["verification"] = row["simulation"]["verification"]
+    if row.get("verification"):
+        body["verification"] = row["verification"]
     return body
 
 
 def read_run(db, scope, run):
-    row = db.execute("SELECT * FROM rehearsal_runs WHERE (tenant_id,site_id,run_id)=(%s,%s,%s)",
-                     (*scope, run)).fetchone()
+    row = db.execute(
+        """SELECT r.*, a.context->'verification' AS verification FROM rehearsal_runs r
+           LEFT JOIN rehearsal_audit a
+             ON (a.tenant_id,a.site_id,a.id)=(r.tenant_id,r.site_id,r.audit_id) AND a.kind='run_updated'
+           WHERE (r.tenant_id,r.site_id,r.run_id)=(%s,%s,%s)""", (*scope, run),
+    ).fetchone()
     if row is None:
         fail(404, "not_found", "Run not found in granted scope.")
     return run_body(row)
@@ -332,7 +336,7 @@ def audit_page(db, scope, after, limit):
         except (ValueError, DecodeError):
             fail(422, "invalid_request", "Invalid audit cursor.")
     rows = db.execute(
-        """SELECT id,actor_id,occurred_at,correlation_id,kind,context FROM rehearsal_audit
+        """SELECT id,actor_id,occurred_at,correlation_id,kind,context - 'simulation' AS context FROM rehearsal_audit
            WHERE (tenant_id,site_id)=(%s,%s) AND id>%s ORDER BY id LIMIT %s""", (*scope, previous, limit + 1),
     ).fetchall()
     cursor = urlsafe_b64encode(f"{scope[0]}/{scope[1]}/{rows[limit - 1]['id']}".encode()).decode().rstrip("=") if len(rows) > limit else None
@@ -354,8 +358,10 @@ def process_one(db, *, simulation_seed=None):
             return False
         scope = (site["tenant_id"], site["site_id"])
         row = db.execute(
-            """SELECT * FROM rehearsal_runs WHERE (tenant_id,site_id)=(%s,%s)
-               AND state IN ('queued','running')""", scope,
+            """SELECT r.*, a.context->'simulation' AS simulation FROM rehearsal_runs r
+               LEFT JOIN rehearsal_audit a
+                 ON (a.tenant_id,a.site_id,a.id)=(r.tenant_id,r.site_id,r.audit_id) AND a.kind='simulator_started'
+               WHERE (r.tenant_id,r.site_id)=(%s,%s) AND r.state IN ('queued','running')""", scope,
         ).fetchone()
         if row is None:
             return False
@@ -377,16 +383,16 @@ def process_one(db, *, simulation_seed=None):
             else:
                 simulation = start_simulation(wave, state["clock_at"], seed,
                                               state["graph"]["services"], state["fail_canary"])
-                db.execute("""UPDATE rehearsal_runs SET state='running',started_at=now(),snapshot_revision=%s,simulation=%s
+                audit = audit_wave(*audit_key, "simulator_started", *coordinates, state["snapshot_revision"], run_id=run,
+                                   simulation_seed=simulation["seed"], simulated_start_at=simulation["simulated_start_at"],
+                                   failure_fixture=simulation["failure_fixture"], simulation=simulation)
+                db.execute("""UPDATE rehearsal_runs SET state='running',started_at=now(),snapshot_revision=%s,audit_id=%s
                               WHERE (tenant_id,site_id,run_id)=(%s,%s,%s) AND state='queued'""",
-                           (state["snapshot_revision"], Jsonb(simulation), *scope, run))
-                audit_wave(*audit_key, "simulator_started", *coordinates, state["snapshot_revision"], run_id=run,
-                           simulation_seed=simulation["seed"], simulated_start_at=simulation["simulated_start_at"],
-                           failure_fixture=simulation["failure_fixture"])
+                           (state["snapshot_revision"], audit, *scope, run))
         else:
             simulation = row["simulation"]
             if simulation is None:
-                # An already-running wave from before migration 009 has no persisted draw.
+                # A run started by the previous worker has no recorded draw.
                 graph = db.execute("""SELECT graph FROM rehearsal_snapshots
                                       WHERE (tenant_id,site_id,revision)=(%s,%s,%s)""",
                                    (*scope, row["snapshot_revision"])).fetchone()["graph"]
@@ -397,7 +403,7 @@ def process_one(db, *, simulation_seed=None):
             reason = None if outcome == "succeeded" else "verification_failed"
             audit = audit_wave(*audit_key, "run_updated", *coordinates, row["snapshot_revision"],
                                run_id=run, verification=verification, **({"reason": reason} if reason else {}))
-            db.execute("""UPDATE rehearsal_runs SET state=%s,reason=%s,devices=%s,audit_id=%s,simulation=%s
+            db.execute("""UPDATE rehearsal_runs SET state=%s,reason=%s,devices=%s,audit_id=%s
                           WHERE (tenant_id,site_id,run_id)=(%s,%s,%s) AND state='running'""",
-                       (outcome, reason, Jsonb(devices), audit, Jsonb(dict(simulation, verification=verification)), *scope, run))
+                       (outcome, reason, Jsonb(devices), audit, *scope, run))
         return True
