@@ -17,6 +17,7 @@ services:
     build:
       context: .
       dockerfile: api/Dockerfile
+      target: test
     environment:
       DATABASE_URL: postgresql://fleet@db:5432/fleet
       FLEET_DEMO_MODE: local
@@ -24,7 +25,7 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=2)"]
       interval: 2s
       timeout: 3s
       retries: 20
@@ -48,6 +49,7 @@ services:
     build:
       context: .
       dockerfile: api/Dockerfile
+      target: runtime
     command: ["python", "-m", "fleet.worker"]
     environment:
       DATABASE_URL: postgresql://fleet@db:5432/fleet
@@ -86,6 +88,7 @@ services:
     build:
       context: .
       dockerfile: api/Dockerfile
+      target: runtime
     command: ["python", "-m", "fleet.event_worker", "relay"]
     environment:
       DATABASE_URL: postgresql://fleet@db:5432/fleet

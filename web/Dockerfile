@@ -5,7 +5,7 @@ RUN npm ci --no-audit --no-fund
 COPY web/ ./
 RUN npm run build
 
-FROM nginx:alpine@sha256:713fc2ebfd92e8217db451477182ee91944b123d2b1ee9fd5a8c6e91ca6c3a11
+FROM nginx:alpine-slim@sha256:4c734d33ee731135dc9f2349914a34551c920f4451fca8bb05bf5880eb9079e8
 COPY web/nginx.conf /etc/nginx/nginx.conf
 COPY --from=build /app/dist/fleet-rehearsal/browser /usr/share/nginx/html
 USER nginx

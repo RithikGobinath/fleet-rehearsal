@@ -2,6 +2,7 @@ import hashlib
 import json
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from binascii import Error as DecodeError
+from contextvars import ContextVar
 from datetime import datetime
 from datetime import timezone
 from pathlib import Path
@@ -11,6 +12,8 @@ from fastapi import HTTPException
 from psycopg.types.json import Jsonb
 
 from fleet.planner import normalize_snapshot, plan_waves, validate_wave, validate_wave_policy
+
+request_correlation = ContextVar("request_correlation", default=None)
 
 
 def stamp(value):
@@ -77,7 +80,7 @@ def write_once(db, scope, actor, operation, key, request, apply):
         if saved["digest"] != digest:
             fail(409, "idempotency_conflict", "This key was already used for a different request.")
         return saved["status"], saved["body"], saved["location"]
-    status, body, location = apply(uuid4())
+    status, body, location = apply(request_correlation.get() or uuid4())
     db.execute("""UPDATE rehearsal_receipts SET status=%s,body=%s,location=%s
                   WHERE (tenant_id,actor_id,operation,request_key)=(%s,%s,%s,%s)""",
                (status, Jsonb(body), location, *identity))

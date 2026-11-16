@@ -4,6 +4,8 @@
 .venv/
 node_modules/
 .terraform/
+/deploy/release-staging/
+/deploy/release-production/
 *.tfstate
 *.tfstate.*
 __pycache__/

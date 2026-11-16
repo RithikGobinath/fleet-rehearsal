@@ -1,0 +1,139 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: api}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: fleet-api}}
+  template:
+    metadata: {labels: {app: fleet-api, database: 'true'}}
+    spec:
+      serviceAccountName: fleet-api
+      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      volumes: [{name: rds-ca, configMap: {name: fleet-rds-ca, optional: true}}]
+      containers:
+        - name: api
+          image: fleet-api
+          envFrom:
+            - configMapRef: {name: fleet-runtime}
+            - secretRef: {name: fleet-runtime-secrets}
+          ports: [{containerPort: 8000}]
+          volumeMounts: [{name: rds-ca, mountPath: /etc/fleet/rds, readOnly: true}]
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 150m, memory: 192Mi}, limits: {cpu: 500m, memory: 384Mi}}
+          startupProbe: {httpGet: {path: /readyz, port: 8000}, periodSeconds: 3, failureThreshold: 40}
+          readinessProbe: {httpGet: {path: /readyz, port: 8000}, periodSeconds: 5}
+          livenessProbe: {tcpSocket: {port: 8000}, periodSeconds: 10}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: worker}
+spec:
+  selector: {matchLabels: {app: fleet-worker}}
+  template:
+    metadata: {labels: {app: fleet-worker, database: 'true'}}
+    spec:
+      serviceAccountName: fleet-worker
+      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      volumes: [{name: rds-ca, configMap: {name: fleet-rds-ca, optional: true}}]
+      containers:
+        - name: worker
+          image: fleet-api
+          command: [python, -m, fleet.worker]
+          volumeMounts: [{name: rds-ca, mountPath: /etc/fleet/rds, readOnly: true}]
+          envFrom:
+            - configMapRef: {name: fleet-runtime}
+            - secretRef: {name: fleet-runtime-secrets}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 75m, memory: 96Mi}, limits: {cpu: 250m, memory: 192Mi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: observations}
+spec:
+  selector: {matchLabels: {app: fleet-observations}}
+  template:
+    metadata: {labels: {app: fleet-observations, database: 'true'}}
+    spec:
+      serviceAccountName: fleet-observations
+      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      volumes: [{name: rds-ca, configMap: {name: fleet-rds-ca, optional: true}}]
+      containers:
+        - name: relay
+          image: fleet-api
+          command: [python, -m, fleet.event_worker, relay]
+          volumeMounts: [{name: rds-ca, mountPath: /etc/fleet/rds, readOnly: true}]
+          envFrom:
+            - configMapRef: {name: fleet-runtime}
+            - secretRef: {name: fleet-runtime-secrets}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 75m, memory: 96Mi}, limits: {cpu: 250m, memory: 192Mi}}
+        - name: projector
+          image: fleet-api
+          command: [python, -m, fleet.event_worker, project]
+          volumeMounts: [{name: rds-ca, mountPath: /etc/fleet/rds, readOnly: true}]
+          envFrom:
+            - configMapRef: {name: fleet-runtime}
+            - secretRef: {name: fleet-runtime-secrets}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 75m, memory: 96Mi}, limits: {cpu: 250m, memory: 192Mi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: web}
+spec:
+  selector: {matchLabels: {app: fleet-console}}
+  template:
+    metadata: {labels: {app: fleet-console}}
+    spec:
+      serviceAccountName: fleet-console
+      securityContext: {runAsNonRoot: true, runAsUser: 101, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: web
+          image: fleet-web
+          ports: [{containerPort: 8080}]
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 50m, memory: 48Mi}, limits: {cpu: 150m, memory: 96Mi}}
+          readinessProbe: {httpGet: {path: /, port: 8080}, periodSeconds: 5}
+          livenessProbe: {tcpSocket: {port: 8080}, periodSeconds: 10}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: kafka}
+spec:
+  serviceName: kafka
+  replicas: 1
+  selector: {matchLabels: {app: fleet-kafka}}
+  template:
+    metadata: {labels: {app: fleet-kafka}}
+    spec:
+      serviceAccountName: fleet-kafka
+      securityContext: {runAsNonRoot: true, runAsUser: 1000, fsGroup: 1000, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: kafka
+          image: apache/kafka:4.4.0@sha256:833b867a9585a141da455dc2b57431c65cbccb27f11c91f694444cca9f777e0f
+          ports: [{containerPort: 9092}, {containerPort: 9093}]
+          env:
+            - {name: KAFKA_NODE_ID, value: '1'}
+            - {name: KAFKA_PROCESS_ROLES, value: 'broker,controller'}
+            - {name: KAFKA_LISTENERS, value: 'PLAINTEXT://:9092,CONTROLLER://:9093'}
+            - {name: KAFKA_ADVERTISED_LISTENERS, value: 'PLAINTEXT://kafka:9092'}
+            - {name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP, value: 'PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT'}
+            - {name: KAFKA_CONTROLLER_LISTENER_NAMES, value: 'CONTROLLER'}
+            - {name: KAFKA_CONTROLLER_QUORUM_VOTERS, value: '1@127.0.0.1:9093'}
+            - {name: KAFKA_INTER_BROKER_LISTENER_NAME, value: 'PLAINTEXT'}
+            - {name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR, value: '1'}
+            - {name: KAFKA_AUTO_CREATE_TOPICS_ENABLE, value: 'false'}
+            - {name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS, value: '0'}
+            - {name: KAFKA_LOG_DIRS, value: '/var/lib/kafka/data'}
+            - {name: KAFKA_HEAP_OPTS, value: '-Xms256m -Xmx512m'}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 200m, memory: 768Mi}, limits: {cpu: 600m, memory: 1200Mi}}
+          startupProbe: {tcpSocket: {port: 9092}, periodSeconds: 5, failureThreshold: 30}
+          readinessProbe: {tcpSocket: {port: 9092}, periodSeconds: 5}
+          volumeMounts: [{name: data, mountPath: /var/lib/kafka/data}]
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: fleet-gp3
+        resources: {requests: {storage: 5Gi}}

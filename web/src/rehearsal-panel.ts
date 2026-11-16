@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, Input, OnChanges, inject, signal } from '@angular/core';
+import { Component, ElementRef, Input, OnChanges, ViewChild, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import type { components } from './api.generated';
 
@@ -22,6 +22,7 @@ type Intent = { path: string; body: object; key: string; complete: (value: unkno
 export class RehearsalPanel implements OnChanges {
   @Input() tenant = '';
   @Input() token: string | null = null;
+  @ViewChild('errorAlert') private errorAlert?: ElementRef<HTMLElement>;
   protected readonly site = signal('harbor');
   protected readonly planId = signal('dispatch');
   protected readonly revision = signal(0);
@@ -107,6 +108,9 @@ export class RehearsalPanel implements OnChanges {
         if (http.status !== 404) this.context.set(null);
       }
       this.error.set(http?.error?.code ? http.error : { code: 'invalid_request', detail: 'The request could not be completed.' });
+      requestAnimationFrame(() => {
+        if (version === this.scopeVersion) this.errorAlert?.nativeElement.focus();
+      });
     } finally {
       if (version === this.scopeVersion) this.busy.set(false);
     }
@@ -161,5 +165,10 @@ export class RehearsalPanel implements OnChanges {
 
   protected retryWrite(): void {
     if (this.intent) void this.submit(this.intent.path, this.intent.complete, this.intent);
+  }
+
+  protected siteTime(utc: string): string {
+    return new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', dateStyle: 'medium', timeStyle: 'short' })
+      .format(new Date(utc));
   }
 }

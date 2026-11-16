@@ -14,7 +14,7 @@
     </p>
   }
   @if (error(); as failure) {
-    <div role="alert">
+    <div #errorAlert role="alert" tabindex="-1">
       <strong>{{ failure.code }}</strong>: {{ failure.detail }}
       @if (failure.audit_id) { <span> Audit {{ failure.audit_id }}.</span> }
       @if (failure.current_revision) {
@@ -45,7 +45,12 @@
     @for (wave of currentPlan.waves; track wave.wave_number) {
       <article>
         <h4>Wave {{ wave.wave_number }} @if (wave.canary) { · Canary }</h4>
-        <p>{{ wave.starts_at }} to {{ wave.ends_at }} · {{ wave.device_ids.join(', ') }}</p>
+        <p>
+          <time [attr.datetime]="wave.starts_at">{{ siteTime(wave.starts_at) }}</time> to
+          <time [attr.datetime]="wave.ends_at">{{ siteTime(wave.ends_at) }}</time>
+          (America/Chicago) · {{ wave.device_ids.join(', ') }}
+        </p>
+        <p>UTC: {{ wave.starts_at }} to {{ wave.ends_at }}</p>
         <button class="btn btn-secondary" type="button"
           [disabled]="busy() || context()?.role !== 'operator' || !currentPlan.approval"
           (click)="start(wave.wave_number)">Start wave {{ wave.wave_number }}</button>

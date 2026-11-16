@@ -8,7 +8,8 @@ from confluent_kafka.admin import AdminClient, NewTopic
 from psycopg.rows import dict_row
 
 from fleet.observations import TOPIC, project_message, relay_one
-from fleet.settings import LocalSettings
+from fleet.settings import runtime_settings
+from fleet.storage import worker_heartbeat
 
 
 def ensure_topic(bootstrap):
@@ -57,7 +58,7 @@ def main():
     parser.add_argument("job", choices=("relay", "project"))
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
-    settings = LocalSettings.from_env(os.environ)
+    settings = runtime_settings(os.environ)
     bootstrap = os.environ["FLEET_KAFKA_BOOTSTRAP"]
     ensure_topic(bootstrap)
     if args.job == "relay":
@@ -66,6 +67,7 @@ def main():
             try:
                 with psycopg.connect(settings.database_url, row_factory=dict_row) as db:
                     changed = relay_one(db, lambda key, value: publish_to(producer, key, value))
+                    worker_heartbeat(db, "observation-relay")
             except RuntimeError:
                 if args.once:
                     raise
@@ -80,6 +82,7 @@ def main():
             while True:
                 with psycopg.connect(settings.database_url, row_factory=dict_row) as db:
                     consumed = consume_one(db, consumer, timeout=10 if args.once else 5)
+                    worker_heartbeat(db, "observation-projector")
                 if args.once:
                     if not consumed:
                         raise RuntimeError("No observation arrived before the poll deadline.")
