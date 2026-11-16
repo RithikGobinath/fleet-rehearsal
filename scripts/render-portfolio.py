@@ -55,11 +55,10 @@ def render(screenshots, reports):
 
     metrics = (
         ("HTTP p95 from scheduled start", f'{float(api["p95_from_scheduled_start_ms"]):.1f} ms'),
-        ("Kafka deliveries", f'{int(replay["kafka_records"]):,}'),
-        ("Duplicate deliveries", f'{int(replay["duplicate_records"]):,}'),
-        ("Logical starts in replay test", int(replay["simulator_starts"])),
         ("Generated planner cases", int(planner["sites_per_seed"]) * len(planner["runs"])),
     )
+    observations = int(replay["unique_observations"])
+    copies = int(replay["kafka_records"]) // observations
     if not api["valid_workload"]:
         timing = "Request dispatch timing made the target comparison inconclusive."
     elif api["target_met"]:
@@ -77,7 +76,9 @@ def render(screenshots, reports):
 {''.join(cards)}<section><h2>Measured workload</h2><div class="metrics">{stats}</div><p>{timing}</p>
 <p>GitHub Actions measured {int(api["requests_succeeded"])} authenticated inventory page reads at {int(api["requests_per_second"])}
 scheduled requests per second over loopback. The client rotated through four cursor positions on a 10,000-asset fixture.</p>
-<p>Planner cases reuse one topology template. Both schedules use the same runtime guard.</p></section></main></body></html>"""
+<p>Planner cases reuse one topology template. Both schedules use the same runtime guard.</p></section>
+<section><h2>Kafka replay exercise</h2><p>The test sent {observations:,} distinct observations {copies} times each
+and recorded {int(replay["simulator_starts"])} logical start for the separate rehearsal.</p></section></main></body></html>"""
 
 
 if __name__ == "__main__":

@@ -419,7 +419,7 @@ export interface components {
             }[];
         };
         RunVerification: {
-            /** @description Plan revision used to seed deterministic device durations and boot outcomes. */
+            /** @description Seed for device durations and boot outcomes. It normally comes from the run ID. Local demo canaries use a fixed seed, and a local one-step run can override it. */
             seed: number;
             /** @description Time for the longest device upgrade in the modeled wave. */
             simulated_elapsed_seconds: number;

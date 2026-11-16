@@ -140,6 +140,36 @@ def validate_wave_policy(policy, wave, succeeded):
     return None
 
 
+def inventory_policy(policy, inventory, graph):
+    """Apply advisory findings and add unconfigured assets with topology evidence."""
+    try:
+        _, windows, _, _, _ = _read_policy(policy)
+    except _Invalid:
+        return policy, {}
+
+    candidates, deferred = [], {}
+    configured = {candidate["id"] for candidate in policy["candidates"]}
+    for candidate in policy["candidates"]:
+        asset = candidate["id"]
+        finding = inventory.get(asset, {}).get("finding")
+        if finding != "affected":
+            deferred[asset] = "advisory_unaffected" if finding == "unaffected" else "advisory_evidence_missing"
+        elif asset not in graph["devices"]:
+            deferred[asset] = MISSING_EVIDENCE
+        candidates.append({**candidate, "eligible": False} if asset in deferred else candidate)
+    for asset in sorted(inventory.keys() - configured):
+        if inventory[asset]["finding"] != "affected":
+            continue
+        if asset not in graph["devices"]:
+            deferred[asset] = MISSING_EVIDENCE
+        elif not windows:
+            deferred[asset] = NO_WINDOW_BEFORE_DEADLINE
+        else:
+            candidates.append({"id": asset, "criticality": 0, "eligible": True,
+                               "deadline": _format_utc(windows[-1][1])})
+    return {**policy, "candidates": candidates}, deferred
+
+
 def _fit(candidate, now, cursor, duration, windows, blackouts):
     """Return (None, (start, end)) for the earliest allowed slot, or (reason, None)."""
     if not candidate["eligible"]:

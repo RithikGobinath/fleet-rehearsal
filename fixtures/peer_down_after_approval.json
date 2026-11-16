@@ -20,7 +20,6 @@
     "duration_seconds": 300,
     "candidates": [
       {"id": "harbor-01", "eligible": true, "criticality": 2, "deadline": "2026-11-10T19:25:00Z"},
-      {"id": "harbor-02", "eligible": true, "criticality": 1, "deadline": "2026-11-10T19:20:00Z"},
       {"id": "harbor-03", "eligible": true, "criticality": 1, "deadline": "2026-11-10T19:30:00Z"},
       {"id": "harbor-04", "eligible": true, "criticality": 1, "deadline": "2026-11-10T19:30:00Z"}
     ],
