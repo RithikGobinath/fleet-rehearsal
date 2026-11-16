@@ -41,12 +41,15 @@ def main():
     args = parser.parse_args()
     overlay = verify(args.artifact, args.source, args.digest)
     target = Path(__file__).resolve().parents[1] / "deploy" / f"release-{args.environment}"
-    target.mkdir(exist_ok=True)
-    path = target / "kustomization.yaml"
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(overlay, indent=2) + "\n", encoding="utf-8")
-    os.replace(temporary, path)
-    print(path)
+    migration = {**overlay, "resources": ["../../migration"], "nameSuffix": f"-{args.source[:12]}",
+                 "images": [image for image in overlay["images"] if image["name"] == "fleet-api"]}
+    for directory, config in ((target, overlay), (target / "migration", migration)):
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / "kustomization.yaml"
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+        os.replace(temporary, path)
+        print(path)
 
 
 if __name__ == "__main__":

@@ -41,7 +41,7 @@ test('approves and rehearses a canary, then blocks a separate approved wave afte
   const blocked = `blocked-${randomUUID().slice(0, 12)}`;
   const snap = async (name: string) => {
     const path = info.outputPath(`${name}.png`);
-    await page.screenshot({ path });
+    await page.screenshot({ path, fullPage: true });
     await info.attach(name, { path, contentType: 'image/png' });
   };
   control('fleet.scenario', 'healthy');
@@ -49,6 +49,7 @@ test('approves and rehearses a canary, then blocks a separate approved wave afte
     await page.goto('/');
     await page.getByRole('button', { name: 'Rehearsal', exact: true }).click();
     await approve(page, success);
+    await snap('approved-wave');
     await page.getByRole('button', { name: 'Start wave 1', exact: true }).click();
     await expect(page.getByText('State: queued', { exact: true })).toBeVisible();
     control('fleet.worker', '--once');

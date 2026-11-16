@@ -10,6 +10,7 @@ export default defineConfig({
   use: {
     baseURL,
     channel: process.env.FLEET_BROWSER_CHANNEL,
-    trace: 'retain-on-failure'
+    trace: process.env.FLEET_RECORD_DEMO === '1' ? 'on' : 'retain-on-failure',
+    video: process.env.FLEET_RECORD_DEMO === '1' ? 'on' : 'off'
   }
 });

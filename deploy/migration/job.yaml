@@ -1,0 +1,24 @@
+apiVersion: batch/v1
+kind: Job
+metadata: {name: fleet-migrate}
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 300
+  ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      volumes: [{name: rds-ca, configMap: {name: fleet-rds-ca, optional: true}}]
+      containers:
+        - name: migrate
+          image: fleet-api
+          command: [python, -m, fleet.migrate]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: fleet-runtime-secrets, key: DATABASE_URL}
+          volumeMounts: [{name: rds-ca, mountPath: /etc/fleet/rds, readOnly: true}]
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 75m, memory: 96Mi}, limits: {cpu: 500m, memory: 256Mi}}

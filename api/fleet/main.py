@@ -1,5 +1,4 @@
 import hashlib
-import json
 import logging
 import os
 import secrets
@@ -21,9 +20,10 @@ from pydantic import BaseModel, Field
 from fleet.inventory_import import IMPORT_SCHEMA, InventoryBatch, read_inventory_import, store_inventory_import
 from fleet.hosted_auth import HostedTokens
 from fleet.metrics import observe_request, render_metrics
+from fleet.migrate import migrate
 from fleet import observations, rehearsal
 from fleet.settings import HostedSettings, LocalSettings, runtime_settings
-from fleet.storage import INVENTORY_PAGE_SQL, MIGRATIONS, initialize_inventory
+from fleet.storage import INVENTORY_PAGE_SQL, schema_ready
 
 
 ADVISORY_URL = "https://www.cisco.com/c/en/us/support/docs/csa/cisco-sa-cat9k-PtmD7bgy.html"
@@ -94,10 +94,12 @@ Database = Annotated[psycopg.Connection, Depends(get_db)]
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = runtime_settings(os.environ)
-    seed = json.loads(settings.fixture_path.read_text(encoding="utf-8"))
-    with psycopg.connect(settings.database_url) as conn:
-        initialize_inventory(conn, seed)
-        rehearsal.seed_rehearsal(conn)
+    if isinstance(settings, LocalSettings):
+        migrate(settings.database_url, settings.fixture_path)
+    else:
+        with psycopg.connect(settings.database_url) as db:
+            if not schema_ready(db):
+                raise RuntimeError("Run the release migration job before starting the hosted API.")
     app.state.settings = settings
     app.state.hosted_tokens = HostedTokens(settings) if isinstance(settings, HostedSettings) else None
     yield
@@ -357,7 +359,7 @@ def health(db: Database) -> dict[str, str]:
 
 @app.get("/readyz", include_in_schema=False)
 def ready(db: Database) -> dict[str, str]:
-    if db.execute("SELECT count(*) AS count FROM inventory_migrations").fetchone()["count"] != len(MIGRATIONS):
+    if not schema_ready(db):
         raise HTTPException(503, "Database migrations are incomplete.")
     return {"status": "ready"}
 

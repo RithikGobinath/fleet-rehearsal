@@ -22,6 +22,9 @@ For Angular work without Docker, run `npm ci --prefix web` and `npm run dev:fixt
 
 ## Project plan
 
+- [Operator guide](docs/operator-guide.md) runs the demo and verifies its behavior from a clone.
+- [Portfolio walkthrough](docs/portfolio-walkthrough.md) follows the healthy and blocked rehearsals using the recorded browser evidence.
+- [Release evidence and handoff](docs/release-evidence.md) covers the $0 candidate and the future AWS decision.
 - [GitHub build map](docs/build-map.md) contains the flowcharts, dependencies, model assignments, and acceptance checks.
 - [Release scope and acceptance](docs/scope.md) defines the maintenance rehearsal demo.
 - [API contract](docs/first-slice-api.md) distinguishes the live inventory interface from planned rehearsal routes.
