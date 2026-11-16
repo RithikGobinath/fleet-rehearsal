@@ -18,4 +18,4 @@ docker compose exec -T api python -m fleet.scenario peer-down
 
 Verify the API and worker with `docker compose exec -T api python -m unittest discover -s tests -v`. The [release workflow](.github/workflows/release-candidate.yml) also runs browser tests, verifies Kafka redelivery and smoke-tests the Kubernetes manifests in Kind.
 
-The [architecture](docs/architecture.md) explains the simulator and includes a two-source Kafka exercise. The [decision record](docs/decisions.md) reports benchmark results and their scope. The [GitHub Pages walkthrough](https://rithikgobinath.github.io/fleet-rehearsal/) is a static demo from a previous release.
+The [architecture](docs/architecture.md) explains the simulator and includes a two-source Kafka exercise. The [decision record](docs/decisions.md) reports benchmark results and their scope. The [GitHub Pages walkthrough](https://rithikgobinath.github.io/fleet-rehearsal/) shows the synthetic rehearsal with browser evidence from GitHub Actions.
