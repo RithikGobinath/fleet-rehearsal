@@ -150,9 +150,29 @@ jobs:
           kubectl -n fleet rollout status statefulset/kafka --timeout=240s
           kubectl -n fleet exec deployment/web -- wget -qO- http://127.0.0.1:8080/api/healthz
           kubectl -n fleet exec deployment/api -- python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/metrics').read()"
+          topic_id() {
+            local id attempt
+            for attempt in {1..10}; do
+              if id="$(timeout 12s kubectl -n fleet exec statefulset/kafka -- /opt/kafka/bin/kafka-topics.sh \
+                --bootstrap-server kafka:9092 --describe --if-exists --topic '^fleet-observations-v1$' |
+                awk '$1 == "Topic:" && $2 == "fleet-observations-v1" && $3 == "TopicId:" {print $4}')" &&
+                [[ -n "$id" ]]; then
+                printf '%s\n' "$id"
+                return
+              fi
+              sleep 2
+            done
+            echo "Kafka observation topic did not become ready" >&2
+            return 1
+          }
+          before_restart="$(topic_id)"
           kubectl -n fleet delete pod kafka-0
           kubectl -n fleet rollout status statefulset/kafka --timeout=240s
-          kubectl -n fleet exec statefulset/kafka -- /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list | grep -Fx fleet-observations-v1
+          after_restart="$(topic_id)"
+          if [[ "$before_restart" != "$after_restart" ]]; then
+            echo "Kafka observation topic changed ID after restart" >&2
+            exit 1
+          fi
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ff086675aa2a557b437f87d4f9ea8c96abfbb92a
