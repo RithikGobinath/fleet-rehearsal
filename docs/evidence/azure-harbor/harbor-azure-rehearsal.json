@@ -1,0 +1,95 @@
+{
+  "verified_on": "2026-11-19",
+  "environment": "Azure student demo",
+  "tenant": "northstar",
+  "site": "harbor",
+  "plans": {
+    "live-pass-fb974987": {
+      "simulator_starts": 1,
+      "run_rows": 1,
+      "audit": [
+        {
+          "id": 1,
+          "kind": "plan_previewed",
+          "actor_id": "demo-partner",
+          "reason": null
+        },
+        {
+          "id": 3,
+          "kind": "plan_approved",
+          "actor_id": "demo-approver",
+          "reason": null
+        },
+        {
+          "id": 5,
+          "kind": "wave_reserved",
+          "actor_id": "demo-northstar",
+          "reason": null
+        },
+        {
+          "id": 6,
+          "kind": "simulator_started",
+          "actor_id": "demo-northstar",
+          "reason": null
+        },
+        {
+          "id": 7,
+          "kind": "run_updated",
+          "actor_id": "demo-northstar",
+          "reason": null
+        }
+      ],
+      "run": {
+        "id": "run-579e10096e5f4190b8602b942d408c72",
+        "state": "succeeded",
+        "devices": [
+          {
+            "outcome": "succeeded",
+            "asset_id": "harbor-01",
+            "boot_succeeded": true,
+            "upgrade_seconds": 50
+          }
+        ],
+        "verification": {
+          "seed": 1,
+          "verified_at": "2026-11-10T19:00:50+00:00",
+          "snapshot_revision": 4,
+          "unavailable_devices": [],
+          "unreachable_services": [],
+          "simulated_elapsed_seconds": 50
+        }
+      }
+    },
+    "live-block-99c9316d": {
+      "simulator_starts": 0,
+      "run_rows": 0,
+      "audit": [
+        {
+          "id": 2,
+          "kind": "plan_previewed",
+          "actor_id": "demo-partner",
+          "reason": null
+        },
+        {
+          "id": 4,
+          "kind": "plan_approved",
+          "actor_id": "demo-approver",
+          "reason": null
+        },
+        {
+          "id": 8,
+          "kind": "wave_blocked",
+          "actor_id": "demo-northstar",
+          "reason": "alternate_path_unavailable"
+        }
+      ]
+    }
+  },
+  "healthy_restored_at_revision": 6,
+  "worker_replicas": 1,
+  "azure_vm": {
+    "name": "fleet-demo",
+    "power_state": "Stopped (deallocated)",
+    "daily_auto_shutdown": "20:30 UTC-06:00"
+  }
+}
