@@ -17,12 +17,14 @@ const mutationPath = ({ plan_id, operation }) =>
 const mutations = new Map(fixture.browser_requests.map(action => [mutationPath(action), action]));
 const [first, ...remaining] = fixture.browser_requests;
 const redirectPath = '/fixture/redirect';
+let redirectTargetHits = 0;
 const server = createServer((request, response) => {
   if (request.url !== mutationPath(first) || request.method !== 'POST' ||
       request.headers.authorization !== sessions[first.role]) {
     response.writeHead(404).end();
     return;
   }
+  redirectTargetHits++;
   response.writeHead(first.http_status, { 'X-Request-ID': first.correlation_id }).end('{}');
 });
 let origin;
@@ -72,6 +74,7 @@ for (const scenario of ['complete', 'redirected', 'duplicate']) {
 
     if (scenario === 'redirected') {
       expect(remaining.map(action => action.correlation_id)).not.toContain(first.correlation_id);
+      const hitsBeforeRedirect = redirectTargetHits;
       const [response, status] = await Promise.all([
         page.waitForResponse(origin + mutationPath(first)),
         send(redirectPath, first.role, 'POST'),
@@ -82,6 +85,7 @@ for (const scenario of ['complete', 'redirected', 'duplicate']) {
       const redirect = response.request().redirectedFrom();
       expect(redirect?.url()).toBe(origin + redirectPath);
       expect((await redirect.response())?.status()).toBe(307);
+      expect(redirectTargetHits - hitsBeforeRedirect).toBe(1);
     }
     const actions = scenario === 'redirected' ? remaining : fixture.browser_requests;
     for (const action of actions) expect(await send(mutationPath(action), action.role, 'POST')).toBe(action.http_status);
