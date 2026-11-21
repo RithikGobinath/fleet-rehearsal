@@ -6,7 +6,7 @@ Fleet Rehearsal turns advisory findings into proposed maintenance waves and rehe
 
 On November 19, 2026, one Azure VM ran k3s with in-cluster PostgreSQL and Kafka and one rehearsal worker. Separate Auth0 demo identities proposed, approved, and operated two plans for the synthetic Harbor site.
 
-- **Healthy canary.** `harbor-01` passed its boot check in 50 modeled seconds with seed `1`. All protected services were reachable, and the audit recorded one simulator start.
+- **Healthy canary.** A one-off worker command in the API pod ran the canary in local mode to pin seed `1`. `harbor-01` passed its boot check in 50 modeled seconds, all protected services stayed reachable, and the audit recorded one simulator start.
 - **Peer outage.** After simulated device `harbor-02` went down, the runtime guard refused the second approved plan with `alternate_path_unavailable`. Audit `audit-8` records the refusal, and the plan had zero simulator starts.
 
 Harbor was restored to its healthy fixture and the VM was deallocated after the run. Real hardware validation is pending.
