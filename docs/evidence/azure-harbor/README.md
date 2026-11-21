@@ -17,7 +17,9 @@ Both plans were proposed and approved while the topology was healthy at snapshot
 
 The accepted canary request ID also appears on `audit-14` (`simulator_started`) and `audit-15` (`run_updated`). In the export, each entry in `browser_requests` can be joined to `audit_events` on `correlation_id` and `audit_id`. The three Auth0 subjects were redacted with one key for this capture so repeated requests from the same role can be matched. The operator's redacted subject also matches the authenticated export request. [Audit and browser request records](harbor-nov20-api-evidence.json)
 
-The JSON was collected with authenticated HTTPS GETs from the same browser origin. The hosted API accepted the Auth0 token and refused an anonymous context request with HTTP 401. The JSON includes the deployment commit, capture time, original audit and run fields, issuer, and redacted subject. Browser screenshots show the signed-in operator role. The JSON's `api_base` records the browser host.
+The JSON was collected with authenticated HTTPS GETs from the same browser origin. The hosted API accepted the Auth0 token and refused an anonymous context request with HTTP 401. The JSON includes the deployment commit, capture time, original audit and run fields, issuer, and redacted subject. The browser collector in the repository reproduces this capture and its request-to-audit joins. [Browser collector](../../../web/scripts/capture-hosted-harbor.mjs) · [Capture instructions](../../../deploy/azure-demo/README.md#export-and-publish-evidence)
+
+The screenshots show the application and its signed-in operator role. The JSON's `api_base` records the page's origin, and its redacted subjects identify the Auth0 sessions within the capture. The Azure deallocation image is a status-only crop.
 
 The event times are November 20 in Chicago and November 21 from 01:15 to 01:22 UTC. The screenshots also show the simulator's fixture clock, which controls the modeled maintenance windows.
 
@@ -32,11 +34,17 @@ The event times are November 20 in Chicago and November 21 from 01:15 to 01:22 U
 | [Blocked start](harbor-nov20-04-blocked.jpg) | The operator received the denial and `audit-16`. |
 | [Full audit timeline](harbor-nov20-05-audit.jpg) | The signed-in operator loaded the original and repeat events for Harbor. |
 | [Healthy fixture restored](harbor-nov20-azure-restored.jpg) | Snapshot 9 was healthy and the single worker rolled out again. |
-| [Azure VM deallocated](harbor-nov20-azure-deallocated.jpg) | Azure reported `Stopped (deallocated)` after the capture. |
+| [Azure VM deallocated](harbor-nov20-azure-deallocated.jpg) | Azure reported `Stopped (deallocated)`. The crop includes the status text. |
 | [November 19 audit view](harbor-nov19-audit-operator-full.jpg) | The November 20 operator session retrieved the original blocked plan and full audit. |
 
 ## November 19 original run
 
 The original API records contain eight events and one successful run. Both previews and approvals took place around 18:46 UTC on November 19, alongside the four recorded Auth0 sign-ins. The start attempts occurred at 04:54–04:55 UTC on November 20, still November 19 in Chicago. The Auth0 claim excerpt in this export describes the November 20 collection session. [Original API records](harbor-nov19-api-evidence.json) · [Auth0 sign-ins](auth0-login-events.json)
+
+The API export was captured at 01:11:29 UTC on November 21, before the same session's rollout of `e91a481`. Its `source_commit` of `05a038e` identifies the deployment that both produced and served the original events. [Original deployment revision](https://github.com/RithikGobinath/fleet-rehearsal/commit/05a038e0d6b63020be88d72cd1624b0e05abe212)
+
+## Azure charges
+
+The approximately $0.02 figure is a retail compute estimate for the November 20 evidence session alone. Total cloud spend across both rehearsal dates was unmeasured. Azure can continue billing the disk and static public IP while the VM is deallocated. [Azure VM states and billing](https://learn.microsoft.com/en-us/azure/virtual-machines/states-billing)
 
 Both rehearsals exercised the simulator against one synthetic site. Real hardware validation is pending.
