@@ -1,11 +1,12 @@
+import { once } from 'node:events';
 import { readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { expect, test } from '@playwright/test';
 import { recordHarbor } from '../scripts/capture-hosted-harbor.mjs';
 
 const fixture = JSON.parse(readFileSync(new URL(
   '../../docs/evidence/azure-harbor/harbor-nov20-api-evidence.json', import.meta.url,
 ), 'utf8'));
-const origin = 'https://harbor.example.invalid';
 const issuer = 'https://identity.example.invalid/';
 const siteApi = '/api/v1/tenants/northstar/sites/harbor';
 const sessions = Object.fromEntries(['partner_proposer', 'customer_approver', 'operator'].map(role => [
@@ -14,8 +15,28 @@ const sessions = Object.fromEntries(['partner_proposer', 'customer_approver', 'o
 const mutationPath = ({ plan_id, operation }) =>
   `${siteApi}/plans/${plan_id}/revisions${{ preview: '', approval: '/1/approval', start: '/1/waves/1/runs' }[operation]}`;
 const mutations = new Map(fixture.browser_requests.map(action => [mutationPath(action), action]));
+const [first, ...remaining] = fixture.browser_requests;
+const redirectPath = '/fixture/redirect';
+let redirectTargetHits = 0;
+const server = createServer((request, response) => {
+  if (request.url !== mutationPath(first) || request.method !== 'POST' ||
+      request.headers.authorization !== sessions[first.role]) {
+    response.writeHead(404).end();
+    return;
+  }
+  redirectTargetHits++;
+  response.writeHead(first.http_status, { 'X-Request-ID': first.correlation_id }).end('{}');
+});
+let origin;
 
 test.use({ trace: 'off', video: 'off' });
+
+test.beforeAll(async () => {
+  await once(server.listen(0, '127.0.0.1'), 'listening');
+  origin = `http://127.0.0.1:${server.address().port}`;
+});
+
+test.afterAll(() => new Promise(resolve => server.close(resolve)));
 
 for (const scenario of ['complete', 'redirected', 'duplicate']) {
   test(`hosted evidence collector checks ${scenario} browser requests`, async ({ page }) => {
@@ -25,6 +46,7 @@ for (const scenario of ['complete', 'redirected', 'duplicate']) {
       const { pathname, searchParams } = new URL(route.request().url());
       const authorization = (await route.request().allHeaders()).authorization;
       if (pathname === '/') return route.fulfill({ contentType: 'text/html', body: '<title>Harbor evidence fixture</title>' });
+      if (pathname === redirectPath) return route.fulfill({ status: 307, headers: { Location: mutationPath(first) } });
       if (pathname === `${siteApi}/rehearsal/context` && !authorization) {
         anonymousChecks++;
         return route.fulfill({ status: 401 });
@@ -50,13 +72,20 @@ for (const scenario of ['complete', 'redirected', 'duplicate']) {
       { path, authorization: sessions[role], method },
     );
 
-    const [first, ...remaining] = fixture.browser_requests;
     if (scenario === 'redirected') {
-      page.emit('response', { url: () => origin + mutationPath(first), status: () => 201,
-        request: () => ({ method: () => 'POST', redirectedFrom: () => ({}),
-          allHeaders: async () => ({ authorization: sessions[first.role] }) }),
-        allHeaders: async () => ({ 'x-request-id': first.correlation_id }),
-      });
+      expect(remaining.map(action => action.correlation_id)).not.toContain(first.correlation_id);
+      const hitsBeforeRedirect = redirectTargetHits;
+      const [response, status] = await Promise.all([
+        page.waitForResponse(origin + mutationPath(first)),
+        send(redirectPath, first.role, 'POST'),
+      ]);
+      expect(status).toBe(first.http_status);
+      expect(response.request().method()).toBe('POST');
+      expect(await response.headerValue('x-request-id')).toBe(first.correlation_id);
+      const redirect = response.request().redirectedFrom();
+      expect(redirect?.url()).toBe(origin + redirectPath);
+      expect((await redirect.response())?.status()).toBe(307);
+      expect(redirectTargetHits - hitsBeforeRedirect).toBe(1);
     }
     const actions = scenario === 'redirected' ? remaining : fixture.browser_requests;
     for (const action of actions) expect(await send(mutationPath(action), action.role, 'POST')).toBe(action.http_status);
