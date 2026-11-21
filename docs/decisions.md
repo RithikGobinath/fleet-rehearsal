@@ -23,4 +23,4 @@ The release workflow attaches `api-latency.json` with measured response and sche
 
 One local run completed all 500 reads and measured 45.96 ms p95 from scheduled start and 45.55 ms p95 from client dispatch.
 
-Compose exercises the local PostgreSQL and Kafka workflows. The release workflow exercises Kubernetes with Kind and validates Terraform without its backend. AWS spend for this work is $0. EKS, RDS, ECR publishing and live Auth0/OIDC remain unverified.
+Compose exercises PostgreSQL and Kafka locally, and the release workflow exercises Kubernetes in Kind. Live Auth0/OIDC was verified on one Azure VM running k3s for the synthetic Harbor rehearsal. The AWS Terraform has only been validated with the backend disabled and has never been applied. AWS spend for this work remains $0. EKS, RDS, and ECR publishing remain unverified. [Azure runbook](../deploy/azure-demo/README.md) · [November 19 evidence](evidence/azure-harbor/harbor-azure-rehearsal.json)

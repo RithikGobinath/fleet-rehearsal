@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { writeFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 
 const scope = '/api/v1/tenants/northstar/sites/harbor';
@@ -36,7 +37,7 @@ async function approve(page: Page, planId: string): Promise<void> {
   await expect(page.getByRole('button', { name: 'Start wave 1', exact: true })).toBeEnabled();
 }
 
-test('approves and rehearses a canary, then blocks a separate approved wave after its peer goes down', async ({ page }, info) => {
+test('approves and rehearses a canary, then blocks a separate approved wave after its peer goes down', async ({ page, baseURL }, info) => {
   test.skip(process.env.FLEET_EXPECT_FIXTURES === '1', 'Uses live PostgreSQL and the simulated worker.');
   if (process.env.FLEET_E2E_EVENTS === '1') test.setTimeout(90_000);
   const success = `passing-${randomUUID().slice(0, 12)}`;
@@ -108,6 +109,23 @@ test('approves and rehearses a canary, then blocks a separate approved wave afte
     expect(items.filter(event => event.plan_id === success && event.kind === 'simulator_started')).toHaveLength(1);
     expect(items.filter(event => event.plan_id === blocked).map(event => event.kind))
       .toEqual(['plan_previewed', 'plan_approved', 'wave_blocked', ...(viaBroker ? ['wave_blocked'] : [])]);
+    if (process.env.FLEET_RECORD_DEMO === '1') {
+      const source = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+      const audit = JSON.parse(execFileSync('python3', ['../scripts/export-rehearsal-evidence.py',
+        '--api-base', new URL('/api', baseURL).href, '--tenant', 'northstar', '--site', 'harbor',
+        '--plan', success, '--plan', blocked, '--source-commit', source], {
+        env: { ...process.env, FLEET_EVIDENCE_TOKEN: access_token },
+        encoding: 'utf8',
+        timeout: 15_000,
+      }));
+      expect(audit.audit_events).toEqual(items.filter(event => [success, blocked].includes(event.plan_id)));
+      expect(audit.runs).toHaveLength(1);
+      expect(audit.runs[0]).toMatchObject({ plan_id: success, state: 'succeeded', verification: { seed: 1 } });
+      expect(audit.auth0_claims).toBeUndefined();
+      const path = info.outputPath('local-compose-audit.json');
+      writeFileSync(path, JSON.stringify(audit, null, 2) + '\n');
+      await info.attach('local-compose-audit', { path, contentType: 'application/json' });
+    }
   } finally {
     control('fleet.scenario', 'healthy');
   }

@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: fleet
+resources:
+  - ../base
+  - postgres.yaml
+patches:
+  - patch: |-
+      apiVersion: storage.k8s.io/v1
+      kind: StorageClass
+      metadata:
+        name: fleet-gp3
+      $patch: delete
+  - target: {kind: StatefulSet, name: kafka}
+    patch: |-
+      - op: replace
+        path: /spec/volumeClaimTemplates/0/spec/storageClassName
+        value: local-path
+images:
+  - {name: fleet-api, newTag: azure-demo}
+  - {name: fleet-web, newTag: azure-demo}
