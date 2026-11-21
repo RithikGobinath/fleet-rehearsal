@@ -1,0 +1,245 @@
+{
+  "sites_per_seed": 6,
+  "candidates_per_site": 7,
+  "horizon_minutes": 180,
+  "workload": "One topology template. Seeded link observation ages (0\u2013160 minutes) and optional outages.",
+  "runs": [
+    {
+      "seed": 7,
+      "severity_with_canary": {
+        "proposals_rejected_at_preview": 5,
+        "unsafe_start_attempts": 11,
+        "blocked_starts": 11,
+        "proposed_waves": 33,
+        "finished_by_deadline": 22,
+        "eligible_affected_devices": 35,
+        "affected_device_minutes": 2975,
+        "unsafe_starts_admitted": 0,
+        "affected_device_hours": 49.583,
+        "preview_refusal_reasons": {
+          "stale_candidate": 3,
+          "alternate_path_unavailable": 2
+        },
+        "blocked_start_reasons": {
+          "stale_candidate": 4,
+          "alternate_path_unavailable": 4,
+          "down_candidate": 3
+        },
+        "deferral_reasons": {
+          "not_eligible": 7,
+          "no_window_before_deadline": 2
+        }
+      },
+      "fleet_rehearsal": {
+        "proposed_waves": 29,
+        "finished_by_deadline": 21,
+        "eligible_affected_devices": 35,
+        "affected_device_minutes": 3050,
+        "unsafe_start_attempts": 8,
+        "blocked_starts": 8,
+        "proposals_rejected_at_preview": 0,
+        "unsafe_starts_admitted": 0,
+        "affected_device_hours": 50.833,
+        "preview_refusal_reasons": {},
+        "blocked_start_reasons": {
+          "alternate_path_unavailable": 4,
+          "down_candidate": 3,
+          "stale_candidate": 1
+        },
+        "deferral_reasons": {
+          "stale_candidate": 3,
+          "alternate_path_unavailable": 3,
+          "not_eligible": 7
+        }
+      }
+    },
+    {
+      "seed": 19,
+      "severity_with_canary": {
+        "proposals_rejected_at_preview": 6,
+        "unsafe_start_attempts": 14,
+        "blocked_starts": 14,
+        "proposed_waves": 31,
+        "finished_by_deadline": 17,
+        "eligible_affected_devices": 33,
+        "affected_device_minutes": 3515,
+        "unsafe_starts_admitted": 0,
+        "affected_device_hours": 58.583,
+        "preview_refusal_reasons": {
+          "stale_candidate": 3,
+          "alternate_path_unavailable": 3
+        },
+        "blocked_start_reasons": {
+          "stale_candidate": 4,
+          "alternate_path_unavailable": 8,
+          "down_candidate": 2
+        },
+        "deferral_reasons": {
+          "no_window_before_deadline": 2,
+          "not_eligible": 9
+        }
+      },
+      "fleet_rehearsal": {
+        "unsafe_start_attempts": 9,
+        "blocked_starts": 9,
+        "proposed_waves": 27,
+        "finished_by_deadline": 18,
+        "eligible_affected_devices": 33,
+        "affected_device_minutes": 3345,
+        "proposals_rejected_at_preview": 0,
+        "unsafe_starts_admitted": 0,
+        "affected_device_hours": 55.75,
+        "preview_refusal_reasons": {},
+        "blocked_start_reasons": {
+          "alternate_path_unavailable": 5,
+          "down_candidate": 3,
+          "stale_candidate": 1
+        },
+        "deferral_reasons": {
+          "stale_candidate": 3,
+          "alternate_path_unavailable": 3,
+          "not_eligible": 9
+        }
+      }
+    },
+    {
+      "seed": 43,
+      "severity_with_canary": {
+        "unsafe_start_attempts": 7,
+        "blocked_starts": 7,
+        "proposed_waves": 30,
+        "finished_by_deadline": 23,
+        "eligible_affected_devices": 31,
+        "affected_device_minutes": 2280,
+        "proposals_rejected_at_preview": 4,
+        "unsafe_starts_admitted": 0,
+        "affected_device_hours": 38.0,
+        "preview_refusal_reasons": {
+          "alternate_path_unavailable": 3,
+          "stale_candidate": 1
+        },
+        "blocked_start_reasons": {
+          "stale_candidate": 4,
+          "alternate_path_unavailable": 3
+        },
+        "deferral_reasons": {
+          "not_eligible": 11,
+          "no_window_before_deadline": 1
+        }
+      },
+      "fleet_rehearsal": {
+        "unsafe_start_attempts": 2,
+        "blocked_starts": 2,
+        "proposed_waves": 27,
+        "finished_by_deadline": 25,
+        "eligible_affected_devices": 31,
+        "affected_device_minutes": 1930,
+        "proposals_rejected_at_preview": 0,
+        "unsafe_starts_admitted": 0,
+        "affected_device_hours": 32.167,
+        "preview_refusal_reasons": {},
+        "blocked_start_reasons": {
+          "stale_candidate": 2
+        },
+        "deferral_reasons": {
+          "not_eligible": 11,
+          "alternate_path_unavailable": 3,
+          "stale_candidate": 1
+        }
+      }
+    },
+    {
+      "seed": 101,
+      "severity_with_canary": {
+        "unsafe_start_attempts": 11,
+        "blocked_starts": 11,
+        "proposed_waves": 34,
+        "finished_by_deadline": 23,
+        "eligible_affected_devices": 35,
+        "affected_device_minutes": 3125,
+        "proposals_rejected_at_preview": 5,
+        "unsafe_starts_admitted": 0,
+        "affected_device_hours": 52.083,
+        "preview_refusal_reasons": {
+          "stale_candidate": 3,
+          "alternate_path_unavailable": 2
+        },
+        "blocked_start_reasons": {
+          "stale_candidate": 6,
+          "alternate_path_unavailable": 3,
+          "down_candidate": 2
+        },
+        "deferral_reasons": {
+          "not_eligible": 7,
+          "no_window_before_deadline": 1
+        }
+      },
+      "fleet_rehearsal": {
+        "proposed_waves": 30,
+        "finished_by_deadline": 25,
+        "eligible_affected_devices": 35,
+        "affected_device_minutes": 2835,
+        "unsafe_start_attempts": 5,
+        "blocked_starts": 5,
+        "proposals_rejected_at_preview": 0,
+        "unsafe_starts_admitted": 0,
+        "affected_device_hours": 47.25,
+        "preview_refusal_reasons": {},
+        "blocked_start_reasons": {
+          "alternate_path_unavailable": 2,
+          "stale_candidate": 2,
+          "down_candidate": 1
+        },
+        "deferral_reasons": {
+          "not_eligible": 7,
+          "stale_candidate": 3,
+          "alternate_path_unavailable": 2
+        }
+      }
+    },
+    {
+      "seed": 209,
+      "severity_with_canary": {
+        "unsafe_start_attempts": 20,
+        "blocked_starts": 20,
+        "proposed_waves": 35,
+        "finished_by_deadline": 15,
+        "eligible_affected_devices": 36,
+        "affected_device_minutes": 4170,
+        "proposals_rejected_at_preview": 0,
+        "unsafe_starts_admitted": 0,
+        "affected_device_hours": 69.5,
+        "preview_refusal_reasons": {},
+        "blocked_start_reasons": {
+          "stale_candidate": 4,
+          "alternate_path_unavailable": 14,
+          "down_candidate": 2
+        },
+        "deferral_reasons": {
+          "not_eligible": 6,
+          "no_window_before_deadline": 1
+        }
+      },
+      "fleet_rehearsal": {
+        "unsafe_start_attempts": 20,
+        "blocked_starts": 20,
+        "proposed_waves": 36,
+        "finished_by_deadline": 16,
+        "eligible_affected_devices": 36,
+        "affected_device_minutes": 4020,
+        "proposals_rejected_at_preview": 0,
+        "unsafe_starts_admitted": 0,
+        "affected_device_hours": 67.0,
+        "preview_refusal_reasons": {},
+        "blocked_start_reasons": {
+          "alternate_path_unavailable": 16,
+          "down_candidate": 1,
+          "stale_candidate": 3
+        },
+        "deferral_reasons": {
+          "not_eligible": 6
+        }
+      }
+    }
+  ]
+}
