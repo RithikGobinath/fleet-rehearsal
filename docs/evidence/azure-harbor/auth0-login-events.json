@@ -1,0 +1,24 @@
+{
+  "source": "Auth0 Dashboard / Monitoring / Logs",
+  "captured_at_utc": "2026-11-21T00:48:05.247Z",
+  "issuer": "https://fleet-rehearsal-demo.us.auth0.com/",
+  "application": "Fleet Rehearsal Demo",
+  "events": [
+    {
+      "date": "2026-11-19T18:43:26.148Z",
+      "type": "Success Login"
+    },
+    {
+      "date": "2026-11-19T18:45:42.766Z",
+      "type": "Success Login"
+    },
+    {
+      "date": "2026-11-19T18:46:23.297Z",
+      "type": "Success Login"
+    },
+    {
+      "date": "2026-11-19T18:46:42.543Z",
+      "type": "Success Login"
+    }
+  ]
+}

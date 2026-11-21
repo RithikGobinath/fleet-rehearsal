@@ -11,9 +11,9 @@ On November 19, 2026, one Azure VM ran k3s with in-cluster PostgreSQL and Kafka 
 
 Harbor was restored to its healthy fixture and the VM was deallocated after the run. Real hardware validation is pending.
 
-[Azure deployment and capture runbook](deploy/azure-demo/README.md) · [Run summary](docs/evidence/azure-harbor/harbor-azure-rehearsal.json) · [Blocked-wave detail](docs/evidence/azure-harbor/harbor-blocked-wave.jpg)
+[Azure deployment and capture runbook](deploy/azure-demo/README.md) · [Run summary](docs/evidence/azure-harbor/harbor-azure-rehearsal.json) · [Blocked-wave detail](docs/evidence/azure-harbor/harbor-blocked-wave.jpg) · [Auth0 sign-in events](docs/evidence/azure-harbor/auth0-login-events.json)
 
-The November 19 files are an operator-written summary and a cropped browser capture. The audit actor IDs are application principals. The runbook explains how to export API records and capture hosted sign-in evidence together. The release workflow uploads an API export from the separate local browser test.
+The November 19 run summary and browser crop were recorded by the operator. The Auth0 dashboard recorded four successful sign-ins to the demo application during the rehearsal. The sign-in timestamps corroborate Auth0 use, while the audit actor IDs identify application principals. The runbook explains how to capture API records and hosted sign-in evidence together. The release workflow uploads an API export from the separate local browser test.
 
 ## Run the demo
 

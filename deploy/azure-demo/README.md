@@ -2,6 +2,8 @@
 
 Run the hosted Fleet Rehearsal stack on one x86-64 Ubuntu VM with k3s. The overlay uses one worker replica, one PostgreSQL pod, and one Kafka broker. Its persistent volumes use k3s local-path storage on the VM. It uses the checked-in synthetic inventory and topology. Use an Azure public IP DNS label for the browser address and keep PostgreSQL, Kafka, and the Kubernetes API private.
 
+The VM used for the November 19 rehearsal was running Ubuntu 24.04 and k3s v1.35.8+k3s1. Its application checkout was at [commit `05a038e`](https://github.com/RithikGobinath/fleet-rehearsal/commit/05a038e0d6b63020be88d72cd1624b0e05abe212).
+
 ## Azure review
 
 Use a dedicated resource group in the Azure for Students subscription. The demo used a North Central US `Standard_B2as_v2` VM (2 vCPUs, 8 GiB RAM). Choose Ubuntu Server 24.04 LTS x64, a 64 GiB Standard SSD, and a Standard static public IPv4 address with a DNS label. Use SSH public-key authentication. Allow inbound TCP 443 and temporary TCP 80 for certificate validation. Restrict TCP 22 to the operator's IP. Keep the k3s API port 6443 closed to public ingress.
