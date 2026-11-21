@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: fleet
+resources:
+  - ../../migration
+patches:
+  - target: {kind: Job, name: fleet-migrate}
+    patch: |-
+      - op: add
+        path: /spec/template/metadata
+        value:
+          labels: {database: 'true'}
+images:
+  - {name: fleet-api, newTag: azure-demo}

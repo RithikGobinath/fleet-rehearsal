@@ -4,14 +4,16 @@ Fleet Rehearsal turns advisory findings into proposed maintenance waves and rehe
 
 ## Azure rehearsal results
 
-Verified on November 19, 2026, on one Azure VM running k3s. Separate Auth0 identities proposed, approved, and operated the two Harbor plans.
+On November 19, 2026, one Azure VM ran k3s with in-cluster PostgreSQL and Kafka and one rehearsal worker. Separate Auth0 demo identities proposed, approved, and operated two plans for the synthetic Harbor site.
 
 - **Healthy canary.** `harbor-01` passed its boot check in 50 modeled seconds with seed `1`. All protected services were reachable, and the audit recorded one simulator start.
 - **Peer outage.** After simulated device `harbor-02` went down, the runtime guard refused the second approved plan with `alternate_path_unavailable`. Audit `audit-8` records the refusal, and the plan had zero simulator starts.
 
 Harbor was restored to its healthy fixture and the VM was deallocated after the run. Real hardware validation is pending.
 
-[Audit evidence](docs/evidence/azure-harbor/harbor-azure-rehearsal.json) · [Blocked-wave screenshot](docs/evidence/azure-harbor/harbor-blocked-wave.jpg)
+[Azure deployment and capture runbook](deploy/azure-demo/README.md) · [Run summary](docs/evidence/azure-harbor/harbor-azure-rehearsal.json) · [Blocked-wave detail](docs/evidence/azure-harbor/harbor-blocked-wave.jpg)
+
+The November 19 files are an operator-written summary and a cropped browser capture. The audit actor IDs are application principals. The runbook explains how to export API records and capture hosted sign-in evidence together. The release workflow uploads an API export from the separate local browser test.
 
 ## Run the demo
 
