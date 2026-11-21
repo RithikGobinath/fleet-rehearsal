@@ -1,0 +1,152 @@
+{
+  "api_base": "https://fleet-rehearsal-demo.northcentralus.cloudapp.azure.com/api",
+  "audit_events": [
+    {
+      "actor_id": "demo-partner",
+      "audit_id": "audit-1",
+      "correlation_id": "1202d73f-479a-4b8c-a0b3-479a661f5b56",
+      "kind": "plan_previewed",
+      "occurred_at": "2026-11-19T18:46:04.505455Z",
+      "plan_id": "live-pass-fb974987",
+      "revision": 1,
+      "snapshot_revision": 2
+    },
+    {
+      "actor_id": "demo-partner",
+      "audit_id": "audit-2",
+      "correlation_id": "ddbc6d6a-34f0-4945-a5ba-4da26ed161b6",
+      "kind": "plan_previewed",
+      "occurred_at": "2026-11-19T18:46:04.818546Z",
+      "plan_id": "live-block-99c9316d",
+      "revision": 1,
+      "snapshot_revision": 2
+    },
+    {
+      "actor_id": "demo-approver",
+      "audit_id": "audit-3",
+      "correlation_id": "7d08cfd5-743c-4e1f-a512-14b09beaf6a8",
+      "kind": "plan_approved",
+      "occurred_at": "2026-11-19T18:46:40.590507Z",
+      "plan_id": "live-pass-fb974987",
+      "revision": 1,
+      "snapshot_revision": 2
+    },
+    {
+      "actor_id": "demo-approver",
+      "audit_id": "audit-4",
+      "correlation_id": "1d2de55f-3810-4e1d-91af-619f1f2002f2",
+      "kind": "plan_approved",
+      "occurred_at": "2026-11-19T18:46:41.201202Z",
+      "plan_id": "live-block-99c9316d",
+      "revision": 1,
+      "snapshot_revision": 2
+    },
+    {
+      "actor_id": "demo-northstar",
+      "audit_id": "audit-5",
+      "correlation_id": "0842bb8a-367d-4225-a34a-4fbb0a3a0d83",
+      "kind": "wave_reserved",
+      "occurred_at": "2026-11-20T04:54:39.096686Z",
+      "plan_id": "live-pass-fb974987",
+      "revision": 1,
+      "run_id": "run-579e10096e5f4190b8602b942d408c72",
+      "snapshot_revision": 4,
+      "wave_number": 1
+    },
+    {
+      "actor_id": "demo-northstar",
+      "audit_id": "audit-6",
+      "correlation_id": "0842bb8a-367d-4225-a34a-4fbb0a3a0d83",
+      "failure_fixture": false,
+      "kind": "simulator_started",
+      "occurred_at": "2026-11-20T04:54:46.011851Z",
+      "plan_id": "live-pass-fb974987",
+      "revision": 1,
+      "run_id": "run-579e10096e5f4190b8602b942d408c72",
+      "simulated_start_at": "2026-11-10T19:00:00+00:00",
+      "simulation_seed": 1,
+      "snapshot_revision": 4,
+      "wave_number": 1
+    },
+    {
+      "actor_id": "demo-northstar",
+      "audit_id": "audit-7",
+      "correlation_id": "0842bb8a-367d-4225-a34a-4fbb0a3a0d83",
+      "kind": "run_updated",
+      "occurred_at": "2026-11-20T04:54:47.305354Z",
+      "plan_id": "live-pass-fb974987",
+      "revision": 1,
+      "run_id": "run-579e10096e5f4190b8602b942d408c72",
+      "snapshot_revision": 4,
+      "verification": {
+        "seed": 1,
+        "simulated_elapsed_seconds": 50,
+        "snapshot_revision": 4,
+        "unavailable_devices": [],
+        "unreachable_services": [],
+        "verified_at": "2026-11-10T19:00:50+00:00"
+      },
+      "wave_number": 1
+    },
+    {
+      "actor_id": "demo-northstar",
+      "audit_id": "audit-8",
+      "correlation_id": "c9ea8093-5342-4f50-b5ec-6ddd507c28f3",
+      "kind": "wave_blocked",
+      "occurred_at": "2026-11-20T04:55:47.046404Z",
+      "plan_id": "live-block-99c9316d",
+      "reason": "alternate_path_unavailable",
+      "revision": 1,
+      "snapshot_revision": 5,
+      "wave_number": 1
+    }
+  ],
+  "auth0_claims": {
+    "iss": "https://fleet-rehearsal-demo.us.auth0.com/",
+    "sub_redacted": "7708faea25b39e3459f55fd590e86696a192bc945898aa0e0338826fb0ba241d"
+  },
+  "capture_method": "browser_same_origin",
+  "captured_at_utc": "2026-11-21T01:11:29.509Z",
+  "context": {
+    "clock_at": "2026-11-10T19:00:00Z",
+    "last_observed_at": "2026-11-10T19:00:00Z",
+    "pending": false,
+    "role": "operator",
+    "stale": false
+  },
+  "plan_ids": [
+    "live-block-99c9316d",
+    "live-pass-fb974987"
+  ],
+  "runs": [
+    {
+      "audit_id": "audit-7",
+      "devices": [
+        {
+          "asset_id": "harbor-01",
+          "boot_succeeded": true,
+          "outcome": "succeeded",
+          "upgrade_seconds": 50
+        }
+      ],
+      "plan_id": "live-pass-fb974987",
+      "revision": 1,
+      "run_id": "run-579e10096e5f4190b8602b942d408c72",
+      "snapshot_revision": 4,
+      "state": "succeeded",
+      "verification": {
+        "seed": 1,
+        "simulated_elapsed_seconds": 50,
+        "snapshot_revision": 4,
+        "unavailable_devices": [],
+        "unreachable_services": [],
+        "verified_at": "2026-11-10T19:00:50+00:00"
+      },
+      "wave_number": 1
+    }
+  ],
+  "site_id": "harbor",
+  "source": "site_api",
+  "source_commit": "05a038e0d6b63020be88d72cd1624b0e05abe212",
+  "tenant_id": "northstar"
+}
