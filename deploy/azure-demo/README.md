@@ -98,6 +98,22 @@ Use separate browser sessions for the partner proposer, customer approver, and o
 
 ## Export and publish evidence
 
+To reproduce the six Auth0 request-to-audit matches in the November 20 evidence, launch the browser collector from the repository root before previewing either fresh plan. Set `deployed_commit` to the full Git SHA used to build the running images.
+
+```bash
+npm ci --prefix web
+(cd web && npx playwright install chromium)
+capture_file="$(mktemp)"
+node web/scripts/capture-hosted-harbor.mjs \
+  --host "https://$demo_host" --issuer "$auth0_issuer" --source-commit "$deployed_commit" \
+  --passing-plan "$passing_plan" --blocked-plan "$blocked_plan" > "$capture_file" \
+  && mv "$capture_file" harbor-browser-evidence.json
+```
+
+Use the browser window it opens to rehearse both plans and sign in separately for each role. After the denied start, load the audit as the operator and press Enter in the terminal. The collector uses the browser's accepted requests to join the six actions to API records. It generates one redaction key per capture and discards it when the export finishes. The JSON contains the issuer and redacted subjects. [Browser collector](../../web/scripts/capture-hosted-harbor.mjs)
+
+For an audit-only export of already completed plans, use the API exporter below.
+
 In the operator's demo browser session, use the Network panel to identify the access token on a successful request to the demo API. Run the following from a trusted workstation. Paste the token only at the hidden prompt and remove it from your clipboard afterward. Pass the two plan IDs and the Auth0 issuer URL from the deployment.
 
 ```bash
