@@ -10,12 +10,12 @@ The same five seeds generate 30 cases using one topology template with seven can
 | --- | ---: | ---: |
 | Proposed waves | 163 | 149 |
 | Proposals failing preview reachability or evidence checks | 20 | 0 |
-| Starts rejected by the shared guard | 63 | 44 |
-| `unsafe_starts_admitted` | 0 | 0 |
+| Rejected starts (shared runtime guard) | 63 | 44 |
+| Unsafe starts admitted (shared runtime guard) | 0 | 0 |
 | Eligible affected devices completed by deadline | 100 / 170 | 105 / 170 |
 | Affected device-hours until model completion or end of horizon | 267.75 | 253.00 |
 
-Run `PYTHONPATH=api python scripts/benchmark-planner.py` for per-seed counts and refusal reasons.
+These totals were verified at commit `e288cebd6e5633f5b1603abd67931c9c05d6e724`. Run `PYTHONPATH=api python scripts/benchmark-planner.py` at that commit to reproduce the per-seed counts and refusal reasons. [Tested commit](https://github.com/RithikGobinath/fleet-rehearsal/commit/e288cebd6e5633f5b1603abd67931c9c05d6e724) · [Checked-in benchmark output](evidence/planner-benchmark.json) · [CI artifact](https://github.com/RithikGobinath/fleet-rehearsal/actions/runs/44963484014/artifacts/14729764795)
 
 ## HTTP and deployment evidence
 
