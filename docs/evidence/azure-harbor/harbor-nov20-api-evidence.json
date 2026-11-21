@@ -1,0 +1,214 @@
+{
+  "api_base": "https://fleet-rehearsal-demo.northcentralus.cloudapp.azure.com/api",
+  "audit_events": [
+    {
+      "actor_id": "demo-partner",
+      "audit_id": "audit-9",
+      "correlation_id": "c64fe435-ae08-4c3e-ab26-d9d9a66c5034",
+      "kind": "plan_previewed",
+      "occurred_at": "2026-11-21T01:15:21.584695Z",
+      "plan_id": "fresh-pass-e91a481-1120",
+      "revision": 1,
+      "snapshot_revision": 7
+    },
+    {
+      "actor_id": "demo-partner",
+      "audit_id": "audit-10",
+      "correlation_id": "150de26d-598f-435b-92f0-2e6c8788588c",
+      "kind": "plan_previewed",
+      "occurred_at": "2026-11-21T01:15:21.969233Z",
+      "plan_id": "fresh-block-e91a481-1120",
+      "revision": 1,
+      "snapshot_revision": 7
+    },
+    {
+      "actor_id": "demo-approver",
+      "audit_id": "audit-11",
+      "correlation_id": "ca7e8021-b191-42bc-bf38-639c09a09682",
+      "kind": "plan_approved",
+      "occurred_at": "2026-11-21T01:19:00.164995Z",
+      "plan_id": "fresh-pass-e91a481-1120",
+      "revision": 1,
+      "snapshot_revision": 7
+    },
+    {
+      "actor_id": "demo-approver",
+      "audit_id": "audit-12",
+      "correlation_id": "28ab7779-6e3c-459e-9aa1-21b9480613cd",
+      "kind": "plan_approved",
+      "occurred_at": "2026-11-21T01:19:01.747911Z",
+      "plan_id": "fresh-block-e91a481-1120",
+      "revision": 1,
+      "snapshot_revision": 7
+    },
+    {
+      "actor_id": "demo-northstar",
+      "audit_id": "audit-13",
+      "correlation_id": "efb483e8-96a1-4ed5-b481-2e43de3d6dc5",
+      "kind": "wave_reserved",
+      "occurred_at": "2026-11-21T01:20:39.229065Z",
+      "plan_id": "fresh-pass-e91a481-1120",
+      "revision": 1,
+      "run_id": "run-5fc04b039fe0499f99d4fc51c1b0367f",
+      "snapshot_revision": 7,
+      "wave_number": 1
+    },
+    {
+      "actor_id": "demo-northstar",
+      "audit_id": "audit-14",
+      "correlation_id": "efb483e8-96a1-4ed5-b481-2e43de3d6dc5",
+      "failure_fixture": false,
+      "kind": "simulator_started",
+      "occurred_at": "2026-11-21T01:20:46.548527Z",
+      "plan_id": "fresh-pass-e91a481-1120",
+      "revision": 1,
+      "run_id": "run-5fc04b039fe0499f99d4fc51c1b0367f",
+      "simulated_start_at": "2026-11-10T19:00:00+00:00",
+      "simulation_seed": 1,
+      "snapshot_revision": 7,
+      "wave_number": 1
+    },
+    {
+      "actor_id": "demo-northstar",
+      "audit_id": "audit-15",
+      "correlation_id": "efb483e8-96a1-4ed5-b481-2e43de3d6dc5",
+      "kind": "run_updated",
+      "occurred_at": "2026-11-21T01:20:47.527828Z",
+      "plan_id": "fresh-pass-e91a481-1120",
+      "revision": 1,
+      "run_id": "run-5fc04b039fe0499f99d4fc51c1b0367f",
+      "snapshot_revision": 7,
+      "verification": {
+        "seed": 1,
+        "simulated_elapsed_seconds": 50,
+        "snapshot_revision": 7,
+        "unavailable_devices": [],
+        "unreachable_services": [],
+        "verified_at": "2026-11-10T19:00:50+00:00"
+      },
+      "wave_number": 1
+    },
+    {
+      "actor_id": "demo-northstar",
+      "audit_id": "audit-16",
+      "correlation_id": "4f68b418-95f9-49a4-8ba6-75b780dd02bf",
+      "kind": "wave_blocked",
+      "occurred_at": "2026-11-21T01:22:02.424389Z",
+      "plan_id": "fresh-block-e91a481-1120",
+      "reason": "alternate_path_unavailable",
+      "revision": 1,
+      "snapshot_revision": 8,
+      "wave_number": 1
+    }
+  ],
+  "auth0_claims": {
+    "iss": "https://fleet-rehearsal-demo.us.auth0.com/",
+    "sub_redacted": "2a1eb7e59e4a9b0222bff0f03bcba1f2dbe5063fae2f38d28df74fe9cd085152"
+  },
+  "capture_method": "browser_same_origin",
+  "captured_at_utc": "2026-11-21T01:22:40.457Z",
+  "context": {
+    "clock_at": "2026-11-10T19:00:00Z",
+    "last_observed_at": "2026-11-10T19:00:00Z",
+    "pending": false,
+    "role": "operator",
+    "stale": false
+  },
+  "plan_ids": [
+    "fresh-pass-e91a481-1120",
+    "fresh-block-e91a481-1120"
+  ],
+  "runs": [
+    {
+      "audit_id": "audit-15",
+      "devices": [
+        {
+          "asset_id": "harbor-01",
+          "boot_succeeded": true,
+          "outcome": "succeeded",
+          "upgrade_seconds": 50
+        }
+      ],
+      "plan_id": "fresh-pass-e91a481-1120",
+      "revision": 1,
+      "run_id": "run-5fc04b039fe0499f99d4fc51c1b0367f",
+      "snapshot_revision": 7,
+      "state": "succeeded",
+      "verification": {
+        "seed": 1,
+        "simulated_elapsed_seconds": 50,
+        "snapshot_revision": 7,
+        "unavailable_devices": [],
+        "unreachable_services": [],
+        "verified_at": "2026-11-10T19:00:50+00:00"
+      },
+      "wave_number": 1
+    }
+  ],
+  "site_id": "harbor",
+  "source": "site_api",
+  "source_commit": "e91a481abcb3a4f19ebb3da67a6d3bb92eaf9e52",
+  "tenant_id": "northstar",
+  "browser_requests": [
+    {
+      "plan_id": "fresh-pass-e91a481-1120",
+      "operation": "preview",
+      "role": "partner_proposer",
+      "http_status": 201,
+      "correlation_id": "c64fe435-ae08-4c3e-ab26-d9d9a66c5034",
+      "iss": "https://fleet-rehearsal-demo.us.auth0.com/",
+      "sub_redacted": "95dc1307ce90efd05bf7d3679c8e09bc8abb873307410dc637b9b588a5311d4e",
+      "audit_id": "audit-9"
+    },
+    {
+      "plan_id": "fresh-block-e91a481-1120",
+      "operation": "preview",
+      "role": "partner_proposer",
+      "http_status": 201,
+      "correlation_id": "150de26d-598f-435b-92f0-2e6c8788588c",
+      "iss": "https://fleet-rehearsal-demo.us.auth0.com/",
+      "sub_redacted": "95dc1307ce90efd05bf7d3679c8e09bc8abb873307410dc637b9b588a5311d4e",
+      "audit_id": "audit-10"
+    },
+    {
+      "plan_id": "fresh-pass-e91a481-1120",
+      "operation": "approval",
+      "role": "customer_approver",
+      "http_status": 201,
+      "correlation_id": "ca7e8021-b191-42bc-bf38-639c09a09682",
+      "iss": "https://fleet-rehearsal-demo.us.auth0.com/",
+      "sub_redacted": "24aad91f5c83590d0efe421147856be4a9511fefe29d0d5ad27e93d1a92babf3",
+      "audit_id": "audit-11"
+    },
+    {
+      "plan_id": "fresh-block-e91a481-1120",
+      "operation": "approval",
+      "role": "customer_approver",
+      "http_status": 201,
+      "correlation_id": "28ab7779-6e3c-459e-9aa1-21b9480613cd",
+      "iss": "https://fleet-rehearsal-demo.us.auth0.com/",
+      "sub_redacted": "24aad91f5c83590d0efe421147856be4a9511fefe29d0d5ad27e93d1a92babf3",
+      "audit_id": "audit-12"
+    },
+    {
+      "plan_id": "fresh-pass-e91a481-1120",
+      "operation": "start",
+      "role": "operator",
+      "http_status": 202,
+      "correlation_id": "efb483e8-96a1-4ed5-b481-2e43de3d6dc5",
+      "iss": "https://fleet-rehearsal-demo.us.auth0.com/",
+      "sub_redacted": "2a1eb7e59e4a9b0222bff0f03bcba1f2dbe5063fae2f38d28df74fe9cd085152",
+      "audit_id": "audit-13"
+    },
+    {
+      "plan_id": "fresh-block-e91a481-1120",
+      "operation": "start",
+      "role": "operator",
+      "http_status": 409,
+      "correlation_id": "4f68b418-95f9-49a4-8ba6-75b780dd02bf",
+      "iss": "https://fleet-rehearsal-demo.us.auth0.com/",
+      "sub_redacted": "2a1eb7e59e4a9b0222bff0f03bcba1f2dbe5063fae2f38d28df74fe9cd085152",
+      "audit_id": "audit-16"
+    }
+  ]
+}

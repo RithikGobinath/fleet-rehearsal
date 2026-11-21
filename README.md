@@ -4,6 +4,8 @@ Fleet Rehearsal turns advisory findings into proposed maintenance waves and rehe
 
 ## Azure rehearsal results
 
+On November 20, we repeated the Harbor rehearsal on one Azure VM running k3s at commit `e91a481`. The fixed-seed canary passed its boot and reachability checks. A separate approved plan was denied after the simulated peer outage. Six requests from the three Auth0 roles match their audit records by request ID. [API records and nine screenshots](docs/evidence/azure-harbor/README.md)
+
 On November 19, 2026, one Azure VM ran k3s with in-cluster PostgreSQL and Kafka and one rehearsal worker. Separate Auth0 demo identities proposed, approved, and operated two plans for the synthetic Harbor site.
 
 - **Healthy canary.** A one-off worker command in the API pod ran the canary in local mode to pin seed `1`. `harbor-01` passed its boot check in 50 modeled seconds, all protected services stayed reachable, and the audit recorded one simulator start.
@@ -11,9 +13,9 @@ On November 19, 2026, one Azure VM ran k3s with in-cluster PostgreSQL and Kafka 
 
 Harbor was restored to its healthy fixture and the VM was deallocated after the run. Real hardware validation is pending.
 
-[Azure deployment and capture runbook](deploy/azure-demo/README.md) · [Run summary](docs/evidence/azure-harbor/harbor-azure-rehearsal.json) · [Blocked-wave detail](docs/evidence/azure-harbor/harbor-blocked-wave.jpg) · [Auth0 sign-in events](docs/evidence/azure-harbor/auth0-login-events.json)
+[Azure deployment and capture runbook](deploy/azure-demo/README.md) · [Hosted API records](docs/evidence/azure-harbor/harbor-nov19-api-evidence.json) · [Full signed-in audit view](docs/evidence/azure-harbor/harbor-nov19-audit-operator-full.jpg) · [Auth0 sign-in events](docs/evidence/azure-harbor/auth0-login-events.json)
 
-The November 19 run summary and browser crop were recorded by the operator. The Auth0 dashboard recorded four successful sign-ins to the demo application during the rehearsal. The sign-in timestamps corroborate Auth0 use, while the audit actor IDs identify application principals. The runbook explains how to capture API records and hosted sign-in evidence together. The release workflow uploads an API export from the separate local browser test.
+The November 19 API records were retrieved on November 20 through an Auth0 operator session. They include the original wall-clock timestamps and identify that later collection session. The four earlier Auth0 sign-ins corroborate the preview and approval window. The release workflow uploads an API export from the separate local browser test.
 
 ## Run the demo
 

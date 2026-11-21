@@ -93,8 +93,8 @@ Use separate browser sessions for the partner proposer, customer approver, and o
    k -n fleet exec deployment/api -- env FLEET_DEMO_MODE=local python -m fleet.worker --once
    ```
 
-2. Refresh the first run and verify the boot and reachability results. Run `k -n fleet exec deployment/api -- python -m fleet.scenario peer-down` on the VM. As the operator, load the second approved plan and attempt Wave 1. Expect `alternate_path_unavailable` with an audit ID. Load the audit and capture the blocked plan, role, denial, and browser address bar together.
-3. Run `k -n fleet exec deployment/api -- python -m fleet.scenario healthy`, scale the worker back to one, and wait for its rollout.
+2. Refresh the first run and verify the boot and reachability results. Run `k -n fleet exec deployment/api -- env FLEET_DEMO_MODE=local python -m fleet.scenario peer-down` on the VM. As the operator, load the second approved plan and attempt Wave 1. Expect `alternate_path_unavailable` with an audit ID. Load the audit and capture the blocked plan, role, denial, and browser address bar together.
+3. Run `k -n fleet exec deployment/api -- env FLEET_DEMO_MODE=local python -m fleet.scenario healthy`, scale the worker back to one, and wait for its rollout. Each mode override applies to the one-off command.
 
 ## Export and publish evidence
 
